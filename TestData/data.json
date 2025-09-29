@@ -1,0 +1,14 @@
+{
+  "title": "Projektledning – begrepp",
+  "lang": "sv",
+  "cards": [
+    {
+      "id": "uuid-1",
+      "question": "Vad är WBS inom projektledning?",
+      "answer": "Work Breakdown Structure, ett sätt att dela upp arbete i mindre delar.",
+      "category": "Projektledning",
+      "tags": ["WBS", "planering"],
+      "difficulty": 2
+    }
+  ]
+}
