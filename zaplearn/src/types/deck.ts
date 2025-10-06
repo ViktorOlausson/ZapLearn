@@ -12,3 +12,13 @@ function stableHash(input: string){
     }
     return ("00000000" + (h >>> 0).toString(16)).slice(-8)
 }
+
+const CardBaseSchema = z.object({
+    id: z.string().min(1).optional(),
+    question: z.string().trim().min(1, "Question is required"),
+    answer: z.string().trim().min(1, "Answer is required"),
+    category: TrimmedString.optional(),
+    tags: z.array(TrimmedString).optional().default([]),
+    difficulty: DifficultSchema.optional()
+})
+
