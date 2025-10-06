@@ -22,3 +22,26 @@ const CardBaseSchema = z.object({
     difficulty: DifficultSchema.optional()
 })
 
+//preprocessing, adds defualt values if missing
+export const CardSchema = z.preprocess((raw) => {
+    const c = raw as z.input<typeof CardBaseSchema>
+
+    //defualt difficulty = 2 (normal)
+    if(c && (c as any).difficulty == null){
+        (c as any).difficulty = 2;
+    }
+
+    //generate id if missing: q+::+a
+    if(c && !(c as any).id){
+        const q = (c as any).question ?? "";
+        const a = (c as any).answer ?? "";
+        (c as any).id = stableHash(`${q}::${a}`)
+    }
+
+    // uniq tags
+    if(c && Array.isArray((c as any).tags)){
+        (c as any).tags = Array.from(new Set((c as any).tags.map(String)));
+    }
+
+    return c;
+}, CardBaseSchema)
