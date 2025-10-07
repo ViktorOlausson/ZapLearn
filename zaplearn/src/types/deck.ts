@@ -49,10 +49,32 @@ export const CardSchema = z.preprocess((raw) => {
 export type Card = z.infer<typeof CardSchema>;
 
 /** Metadata for game **/
-export const DeckMeta = z.object({
+export const DeckMetaSchema = z.object({
     title: z.string().trim().min(1, "Title is required"),
     lang: z.string()
     .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use BCP-47 like 'sv' or 'sv-SE'")
     .optional()
     .default("sv")
 })
+
+/** MVP-schema **/
+export const DeckSchema = z.object({
+    ...DeckMetaSchema.shape,
+    cards: z.array(CardSchema).min(1, "At least on Card")
+})
+
+export type Deck = z.infer<typeof DeckSchema>;
+
+/** Helper: parse text from file and get friendly error for UI **/
+export function parseDeckFile(jsonText: string){
+    try{
+        const data = JSON.parse(jsonText);
+        const parsed = DeckSchema.safeParse(data)
+        if(!parsed.success){
+            return{ok: false as const, error: parsed.error.issues};
+        }
+        return{ok: true as const, deck: parsed.data}
+    }catch(e:any){
+        return{ok: false as const, errors: [{message: e?.message ?? "Invalid JSON"}]}
+    }
+}
