@@ -45,3 +45,14 @@ export const CardSchema = z.preprocess((raw) => {
 
     return c;
 }, CardBaseSchema)
+
+export type Card = z.infer<typeof CardSchema>;
+
+/** Metadata for game **/
+export const DeckMeta = z.object({
+    title: z.string().trim().min(1, "Title is required"),
+    lang: z.string()
+    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use BCP-47 like 'sv' or 'sv-SE'")
+    .optional()
+    .default("sv")
+})
