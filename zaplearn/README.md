@@ -2,6 +2,10 @@
 
 ZapLearn is a local-first PWA for importing, editing, studying, and exporting JSON flashcard decks. It has no backend or account system: decks, progress, and settings are stored in the browser's IndexedDB.
 
+## License
+
+ZapLearn is source-available for non-commercial use under the [PolyForm Noncommercial License 1.0.0](../LICENSE.md). Commercial use, resale, or offering ZapLearn as a paid product or service requires separate written permission from Viktor Olausson.
+
 # How ZapLearn Works
 
 ZapLearn lets you build a personal flashcard library and study it without creating an account.
