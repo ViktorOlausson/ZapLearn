@@ -10,6 +10,41 @@ import {
 export type ImportStrategy = "new" | "replace";
 export const MAX_DECK_FILE_SIZE = 2 * 1024 * 1024;
 
+type LimitedTextResult =
+  { ok: true; text: string } | { ok: false; errors: string[] };
+
+async function readResponseTextWithLimit(
+  response: Response,
+): Promise<LimitedTextResult> {
+  const tooLarge = {
+    ok: false as const,
+    errors: ["The deck response must be smaller than 2 MB."],
+  };
+  if (!response.body) {
+    const body = await response.blob();
+    return body.size > MAX_DECK_FILE_SIZE
+      ? tooLarge
+      : { ok: true, text: await body.text() };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    receivedBytes += value.byteLength;
+    if (receivedBytes > MAX_DECK_FILE_SIZE) {
+      await reader.cancel();
+      return tooLarge;
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
+  return { ok: true, text };
+}
+
 export function materializeDeck(
   imported: ImportedDeck,
   strategy: ImportStrategy,
@@ -83,7 +118,14 @@ export async function readDeckFile(file: File) {
 
 export async function fetchDeckFromUrl(url: string, etag?: string) {
   try {
-    const response = await fetch(url, {
+    const resolvedUrl = new URL(url, window.location.href);
+    if (!["http:", "https:"].includes(resolvedUrl.protocol)) {
+      return {
+        ok: false as const,
+        errors: ["Deck URLs must use HTTP or HTTPS."],
+      };
+    }
+    const response = await fetch(resolvedUrl.href, {
       headers: etag ? { "If-None-Match": etag } : undefined,
     });
     if (response.status === 304)
@@ -93,7 +135,16 @@ export async function fetchDeckFromUrl(url: string, etag?: string) {
         ok: false as const,
         errors: [`Could not load deck (${response.status}).`],
       };
-    const parsed = parseDeckFile(await response.text());
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_DECK_FILE_SIZE) {
+      return {
+        ok: false as const,
+        errors: ["The deck response must be smaller than 2 MB."],
+      };
+    }
+    const body = await readResponseTextWithLimit(response);
+    if (!body.ok) return body;
+    const parsed = parseDeckFile(body.text);
     return parsed.ok
       ? {
           ok: true as const,

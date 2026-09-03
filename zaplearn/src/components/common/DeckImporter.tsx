@@ -10,6 +10,7 @@ import {
   type ImportStrategy,
 } from "@/features/decks/deckService";
 import { useDeckStore } from "@/features/decks/deckStore";
+import { useStoragePersistenceStore } from "@/features/settings/storagePersistenceStore";
 import type { ImportedDeck } from "@/types/deck";
 
 type DeckImporterProps = { compact?: boolean; onImported?: () => void };
@@ -21,6 +22,9 @@ export function DeckImporter({
   const input = useRef<HTMLInputElement>(null);
   const decks = useDeckStore((state) => state.decks);
   const save = useDeckStore((state) => state.save);
+  const requestStoragePersistence = useStoragePersistenceStore(
+    (state) => state.request,
+  );
   const [dragging, setDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
@@ -67,6 +71,7 @@ export function DeckImporter({
         existing,
       );
       await save(savedDeck);
+      if (decks.length === 0) void requestStoragePersistence();
       toast.success(existing ? "Deck updated" : "Deck imported", {
         description: existing
           ? "Progress for matching cards was kept."

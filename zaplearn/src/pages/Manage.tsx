@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Copy,
+  Database,
   Download,
   Info,
   Pencil,
@@ -38,6 +39,8 @@ import { useProgressStore } from "@/features/progress/progressStore";
 import { getDeckStats } from "@/features/progress/progressStats";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { useStoragePersistenceStore } from "@/features/settings/storagePersistenceStore";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import type { Deck } from "@/types/deck";
 
@@ -50,6 +53,13 @@ function filename(value: string): string {
   );
 }
 
+const storageLabels = {
+  checking: "Checking storage…",
+  persistent: "Persistent storage granted",
+  "best-effort": "Best-effort browser storage",
+  unsupported: "Persistence API unavailable",
+} as const;
+
 export function Manage() {
   const decks = useDeckStore((state) => state.decks);
   const remove = useDeckStore((state) => state.remove);
@@ -58,6 +68,11 @@ export function Manage() {
   const documents = useProgressStore((state) => state.documents);
   const load = useProgressStore((state) => state.load);
   const reset = useProgressStore((state) => state.reset);
+  const storageStatus = useStoragePersistenceStore((state) => state.status);
+  const requestingStorage = useStoragePersistenceStore(
+    (state) => state.requesting,
+  );
+  const requestStorage = useStoragePersistenceStore((state) => state.request);
   const [openDelete, setOpenDelete] = useState<string | null>(null);
   const [openReset, setOpenReset] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -205,14 +220,14 @@ export function Manage() {
                     variant="outline"
                     onClick={() => exportDeck(deck, false)}
                   >
-                    <Download /> Deck
+                    <Download /> Backup deck
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => exportDeck(deck, true)}
                   >
-                    <Download /> With progress
+                    <Download /> Backup + progress
                   </Button>
                   <Button
                     size="sm"
@@ -319,6 +334,25 @@ export function Manage() {
               Export important decks as JSON for backup or transfer. Clearing
               this browser’s site data may remove locally saved decks and study
               history.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Badge variant="secondary" role="status">
+                <Database aria-hidden="true" /> {storageLabels[storageStatus]}
+              </Badge>
+              {storageStatus === "best-effort" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={requestingStorage}
+                  onClick={() => void requestStorage()}
+                >
+                  {requestingStorage ? "Requesting…" : "Protect local storage"}
+                </Button>
+              )}
+            </div>
+            <p className="mt-2 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+              Storage protection reduces automatic browser eviction when
+              granted, but it is not a backup.
             </p>
           </div>
         </div>

@@ -6,8 +6,11 @@ import {
 } from "@/features/decks/deckService";
 import { stableHash } from "@/lib/hash";
 import type { Deck } from "@/types/deck";
+import { z } from "zod";
 
-type RuntimeConfig = { deckUrl?: string };
+const RuntimeConfigSchema = z
+  .object({ deckUrl: z.string().trim().min(1).max(2048).optional() })
+  .strict();
 
 export async function loadRuntimeSeed(
   save: (deck: Deck) => Promise<void>,
@@ -15,9 +18,15 @@ export async function loadRuntimeSeed(
   try {
     const response = await fetch("/runtime/config.json", { cache: "no-store" });
     if (!response.ok) return;
-    const config = (await response.json()) as RuntimeConfig;
+    const parsedConfig = RuntimeConfigSchema.safeParse(await response.json());
+    if (!parsedConfig.success) throw new Error("Invalid runtime configuration");
+    const config = parsedConfig.data;
     if (!config.deckUrl) return;
-    const result = await fetchDeckFromUrl(config.deckUrl);
+    const deckUrl = new URL(config.deckUrl, window.location.href);
+    if (!["http:", "https:"].includes(deckUrl.protocol)) {
+      throw new Error("Unsupported seed deck URL protocol");
+    }
+    const result = await fetchDeckFromUrl(deckUrl.href);
     if (!result.ok || result.unchanged) {
       if (!result.ok)
         toast.message("Seed deck unavailable", {
@@ -28,13 +37,13 @@ export async function loadRuntimeSeed(
     const deck = materializeDeck(
       {
         ...result.deck,
-        id: `seed-${stableHash(config.deckUrl)}`,
+        id: `seed-${stableHash(deckUrl.href)}`,
       },
       "new",
       undefined,
       {
         type: "seed",
-        url: new URL(config.deckUrl, window.location.href).href,
+        url: deckUrl.href,
         etag: result.etag,
         readOnly: true,
       },

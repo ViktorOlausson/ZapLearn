@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createDeck,
+  fetchDeckFromUrl,
+  MAX_DECK_FILE_SIZE,
   materializeDeck,
   readDeckFile,
 } from "@/features/decks/deckService";
 
 describe("file deck import", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
   it("returns a friendly error for an invalid file", async () => {
     const result = await readDeckFile(
       new File(["not json"], "deck.txt", { type: "text/plain" }),
@@ -38,5 +43,55 @@ describe("file deck import", () => {
     if (imported.ok)
       expect(materializeDeck(imported.deck, "new").id).toBe("stable-deck");
     expect(createDeck("Local").id).toMatch(/^deck-/);
+  });
+  it("rejects oversized files before parsing them", async () => {
+    const result = await readDeckFile(
+      new File([new Uint8Array(MAX_DECK_FILE_SIZE + 1)], "large.json"),
+    );
+    expect(result).toEqual({
+      ok: false,
+      errors: ["The deck file must be smaller than 2 MB."],
+    });
+  });
+  it("rejects non-HTTP deck URLs without fetching them", async () => {
+    const result = await fetchDeckFromUrl("javascript:alert(1)");
+    expect(result).toEqual({
+      ok: false,
+      errors: ["Deck URLs must use HTTP or HTTPS."],
+    });
+  });
+  it("stops reading a remote response that exceeds the limit", async () => {
+    const oversizedDeck = JSON.stringify({
+      title: "Large",
+      cards: [{ question: "Q", answer: "x".repeat(MAX_DECK_FILE_SIZE) }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(oversizedDeck, {
+          headers: { "content-length": "10" },
+        }),
+      ),
+    );
+
+    await expect(
+      fetchDeckFromUrl("https://example.com/deck.json"),
+    ).resolves.toEqual({
+      ok: false,
+      errors: ["The deck response must be smaller than 2 MB."],
+    });
+  });
+  it("handles failed and invalid remote responses safely", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockResolvedValueOnce(new Response("no", { status: 500 }));
+    await expect(
+      fetchDeckFromUrl("https://example.com/deck.json"),
+    ).resolves.toEqual({ ok: false, errors: ["Could not load deck (500)."] });
+
+    fetchMock.mockResolvedValueOnce(new Response("not json"));
+    const invalid = await fetchDeckFromUrl("https://example.com/deck.json");
+    expect(invalid.ok).toBe(false);
+    if (!invalid.ok) expect(invalid.errors[0]).toContain("Could not read JSON");
   });
 });

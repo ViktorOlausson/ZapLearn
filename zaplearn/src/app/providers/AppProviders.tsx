@@ -5,12 +5,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDeckStore } from "@/features/decks/deckStore";
 import { useSettingsStore } from "@/features/settings/settingsStore";
 import { loadRuntimeSeed } from "@/app/providers/runtimeSeed";
-import { requestPersistentStorage } from "@/lib/persistentStorage";
+import { useStoragePersistenceStore } from "@/features/settings/storagePersistenceStore";
 
 function Bootstrap({ children }: PropsWithChildren) {
   const initializeDecks = useDeckStore((state) => state.initialize);
   const saveDeck = useDeckStore((state) => state.save);
   const initializeSettings = useSettingsStore((state) => state.initialize);
+  const checkStoragePersistence = useStoragePersistenceStore(
+    (state) => state.check,
+  );
   const { setTheme } = useTheme();
   useEffect(() => {
     void (async () => {
@@ -22,8 +25,8 @@ function Bootstrap({ children }: PropsWithChildren) {
     void initializeSettings().then(setTheme);
   }, [initializeSettings, setTheme]);
   useEffect(() => {
-    void requestPersistentStorage();
-  }, []);
+    void checkStoragePersistence();
+  }, [checkStoragePersistence]);
   return (
     <>
       {children}

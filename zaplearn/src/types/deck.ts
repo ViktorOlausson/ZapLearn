@@ -17,14 +17,16 @@ export const DifficultySchema = z.union([
   z.literal(3),
 ]);
 
-export const CardSchema = z.object({
-  id: z.string().min(1),
-  question: requiredText("Question"),
-  answer: requiredText("Answer"),
-  category: optionalText.optional(),
-  tags: z.array(optionalText).default([]),
-  difficulty: DifficultySchema.default(2),
-});
+export const CardSchema = z
+  .object({
+    id: z.string().min(1),
+    question: requiredText("Question"),
+    answer: requiredText("Answer"),
+    category: optionalText.optional(),
+    tags: z.array(optionalText).default([]),
+    difficulty: DifficultySchema.default(2),
+  })
+  .strip();
 
 export const ImportedCardSchema = CardSchema.partial({ id: true }).transform(
   (card) => ({
@@ -34,40 +36,46 @@ export const ImportedCardSchema = CardSchema.partial({ id: true }).transform(
   }),
 );
 
-export const DeckSourceSchema = z.object({
-  type: z.enum(["import", "seed", "url", "local"]),
-  url: z.string().url().optional(),
-  etag: z.string().optional(),
-  readOnly: z.boolean().optional(),
-});
+export const DeckSourceSchema = z
+  .object({
+    type: z.enum(["import", "seed", "url", "local"]),
+    url: z.string().url().optional(),
+    etag: z.string().optional(),
+    readOnly: z.boolean().optional(),
+  })
+  .strip();
 
-export const ImportedDeckSchema = z.object({
-  id: z.string().min(1).optional(),
-  title: requiredText("Title"),
-  lang: z
-    .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
-    .optional(),
-  cards: z
-    .array(ImportedCardSchema)
-    .min(1, "A deck must contain at least one card"),
-  schemaVersion: z.number().int().positive().optional(),
-  source: DeckSourceSchema.optional(),
-});
+export const ImportedDeckSchema = z
+  .object({
+    id: z.string().min(1).optional(),
+    title: requiredText("Title"),
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
+      .optional(),
+    cards: z
+      .array(ImportedCardSchema)
+      .min(1, "A deck must contain at least one card"),
+    schemaVersion: z.number().int().positive().optional(),
+    source: DeckSourceSchema.optional(),
+  })
+  .strip();
 
-export const DeckSchema = z.object({
-  id: z.string().min(1),
-  title: requiredText("Title"),
-  lang: z
-    .string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
-    .optional(),
-  cards: z.array(CardSchema),
-  schemaVersion: z.number().int().positive(),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-  source: DeckSourceSchema.optional(),
-});
+export const DeckSchema = z
+  .object({
+    id: z.string().min(1),
+    title: requiredText("Title"),
+    lang: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
+      .optional(),
+    cards: z.array(CardSchema),
+    schemaVersion: z.number().int().positive(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    source: DeckSourceSchema.optional(),
+  })
+  .strip();
 
 export type Card = z.infer<typeof CardSchema>;
 export type DeckSource = z.infer<typeof DeckSourceSchema>;

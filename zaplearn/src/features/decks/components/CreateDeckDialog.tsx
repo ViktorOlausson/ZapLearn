@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { createDeck } from "@/features/decks/deckService";
 import { useDeckStore } from "@/features/decks/deckStore";
+import { useStoragePersistenceStore } from "@/features/settings/storagePersistenceStore";
 
 const CreateDeckSchema = z.object({
   title: z.string().trim().min(1, "Enter a deck title."),
@@ -38,6 +39,10 @@ export function CreateDeckDialog({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const save = useDeckStore((state) => state.save);
+  const hasDecks = useDeckStore((state) => state.decks.length > 0);
+  const requestStoragePersistence = useStoragePersistenceStore(
+    (state) => state.request,
+  );
   const navigate = useNavigate();
 
   function changeOpen(nextOpen: boolean) {
@@ -61,6 +66,7 @@ export function CreateDeckDialog({
     try {
       const deck = createDeck(parsed.data.title, parsed.data.lang || undefined);
       await save(deck);
+      if (!hasDecks) void requestStoragePersistence();
       toast.success("Deck created", {
         description: "Add your first card to start studying.",
       });

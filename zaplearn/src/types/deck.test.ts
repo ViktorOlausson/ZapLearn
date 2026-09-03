@@ -28,4 +28,17 @@ describe("deck import validation", () => {
         '{"title":"Bad","cards":[{"question":"Q","answer":"A","difficulty":4}]}',
       ).ok,
     ).toBe(false));
+
+  it("strips unrecognized properties without modifying object prototypes", () => {
+    const result = parseDeckFile(
+      '{"title":"Safe","__proto__":{"polluted":true},"cards":[{"question":"Q","answer":"A","unexpected":"value"}]}',
+    );
+
+    expect(result.ok).toBe(true);
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    if (result.ok) {
+      expect(Object.hasOwn(result.deck, "__proto__")).toBe(false);
+      expect(Object.hasOwn(result.deck.cards[0], "unexpected")).toBe(false);
+    }
+  });
 });

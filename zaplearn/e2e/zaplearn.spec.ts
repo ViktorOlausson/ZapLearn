@@ -92,11 +92,12 @@ test("import, edit, study, persist, export, reset, and delete", async ({
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Deck", exact: true }).click();
+  await page.getByRole("button", { name: "Backup deck", exact: true }).click();
   const download = await downloadPromise;
   const downloadPath = await download.path();
   expect(downloadPath).not.toBeNull();
-  const exported = JSON.parse(await readFile(downloadPath!, "utf8")) as {
+  const exportedText = await readFile(downloadPath!, "utf8");
+  const exported = JSON.parse(exportedText) as {
     title: string;
     cards: unknown[];
   };
@@ -115,6 +116,18 @@ test("import, edit, study, persist, export, reset, and delete", async ({
   await expect(
     page.getByText("No decks yet. Import one to begin."),
   ).toBeVisible();
+
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: download.suggestedFilename(),
+      mimeType: "application/json",
+      buffer: Buffer.from(exportedText),
+    });
+  await expect(
+    page.getByRole("heading", { name: "ZapLearn Test Deck" }),
+  ).toBeVisible();
   expect(consoleErrors).toEqual([]);
 });
 
@@ -132,6 +145,68 @@ test("creates a local deck and opens the empty editor", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "My new deck" }),
   ).toBeVisible();
+});
+
+test("requests persistent storage after the first deck is created", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    let persistent = false;
+    Reflect.set(window, "__zaplearnPersistCalls", 0);
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: {
+        persisted: async () => persistent,
+        persist: async () => {
+          Reflect.set(
+            window,
+            "__zaplearnPersistCalls",
+            Number(Reflect.get(window, "__zaplearnPersistCalls")) + 1,
+          );
+          persistent = true;
+          return true;
+        },
+      },
+    });
+  });
+  await page.goto("/");
+  expect(
+    await page.evaluate(() => Reflect.get(window, "__zaplearnPersistCalls")),
+  ).toBe(0);
+  await page.getByRole("button", { name: "Create deck" }).first().click();
+  await page.getByLabel("Title").fill("Protected deck");
+  await page.getByRole("button", { name: "Create and edit" }).click();
+  await page
+    .getByLabel("Main navigation")
+    .getByRole("link", { name: "Manage decks" })
+    .click();
+  await expect(page.getByText("Persistent storage granted")).toBeVisible();
+  expect(
+    await page.evaluate(() => Reflect.get(window, "__zaplearnPersistCalls")),
+  ).toBe(1);
+});
+
+test("works when the persistent-storage API is unavailable", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create deck" }).first().click();
+  await page.getByLabel("Title").fill("Unsupported API deck");
+  await page.getByRole("button", { name: "Create and edit" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Unsupported API deck" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Main navigation")
+    .getByRole("link", { name: "Manage decks" })
+    .click();
+  await expect(page.getByText("Persistence API unavailable")).toBeVisible();
 });
 
 test("main views do not overflow a 375px viewport", async ({ page }) => {
