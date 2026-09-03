@@ -1,14 +1,76 @@
 {
-  "title": "Projektledning – begrepp",
-  "lang": "sv",
+  "title": "ZapLearn Test Deck",
+  "lang": "en",
   "cards": [
     {
-      "id": "uuid-1",
-      "question": "Vad är WBS inom projektledning?",
-      "answer": "Work Breakdown Structure, ett sätt att dela upp arbete i mindre delar.",
-      "category": "Projektledning",
-      "tags": ["WBS", "planering"],
+      "question": "What does HTML stand for?",
+      "answer": "HyperText Markup Language",
+      "category": "Web Development",
+      "tags": ["html", "web"],
+      "difficulty": 1
+    },
+    {
+      "question": "What does CSS stand for?",
+      "answer": "Cascading Style Sheets",
+      "category": "Web Development",
+      "tags": ["css", "web"],
+      "difficulty": 1
+    },
+    {
+      "question": "What does JSON stand for?",
+      "answer": "JavaScript Object Notation",
+      "category": "Programming",
+      "tags": ["json", "data"],
+      "difficulty": 1
+    },
+    {
+      "question": "What is React?",
+      "answer": "A JavaScript library for building user interfaces.",
+      "category": "Programming",
+      "tags": ["react", "javascript"],
       "difficulty": 2
+    },
+    {
+      "question": "What is TypeScript?",
+      "answer": "A strongly typed programming language that builds on JavaScript.",
+      "category": "Programming",
+      "tags": ["typescript", "javascript"],
+      "difficulty": 2
+    },
+    {
+      "question": "What is IndexedDB?",
+      "answer": "A browser database for storing structured data locally on a user's device.",
+      "category": "Web Development",
+      "tags": ["indexeddb", "storage"],
+      "difficulty": 2
+    },
+    {
+      "question": "What is spaced repetition?",
+      "answer": "A learning technique where material is reviewed at increasing intervals based on how well it is remembered.",
+      "category": "Learning",
+      "tags": ["study", "memory"],
+      "difficulty": 2
+    },
+    {
+      "question": "What is a PWA?",
+      "answer": "A Progressive Web App, which is a web application that can provide app-like features such as installation and offline support.",
+      "category": "Web Development",
+      "tags": ["pwa", "offline"],
+      "difficulty": 3
+    },
+    {
+      "question": "What is the purpose of a unique card ID?",
+      "answer": "To consistently identify a card so that edits and study progress can remain associated with it.",
+      "category": "ZapLearn",
+      "tags": ["cards", "ids"],
+      "difficulty": 2
+    },
+    {
+      "question": "Where does ZapLearn currently store decks and study progress?",
+      "answer": "Locally in the user's browser using IndexedDB.",
+      "category": "ZapLearn",
+      "tags": ["storage", "indexeddb"],
+      "difficulty": 1
     }
   ]
 }
