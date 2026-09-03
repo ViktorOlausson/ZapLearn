@@ -24,7 +24,6 @@ export function Home() {
   return (
     <div className="space-y-10">
       <section className="relative overflow-hidden rounded-2xl border bg-card px-6 py-8 shadow-sm sm:px-9 sm:py-10">
-        <div className="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-primary/10 blur-3xl" />
         <div className="relative max-w-2xl">
           <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-primary">
             <Sparkles className="size-4" /> Your local study space

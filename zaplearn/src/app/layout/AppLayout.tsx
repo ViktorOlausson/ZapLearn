@@ -32,7 +32,7 @@ export function AppLayout() {
     };
   }, []);
   return (
-    <div className="min-h-screen bg-background bg-[radial-gradient(circle_at_top_right,var(--accent),transparent_35%)]">
+    <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-20 border-b border-border/70 bg-background/85 backdrop-blur-xl">
         <nav
           className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3"

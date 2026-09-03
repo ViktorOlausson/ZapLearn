@@ -84,6 +84,12 @@ test("import, edit, study, persist, export, reset, and delete", async ({
   await page.reload();
   await expect(page.getByText("2 due")).toBeVisible();
   await page.getByRole("link", { name: "Manage all" }).click();
+  await expect(
+    page.getByRole("heading", { name: "How ZapLearn works" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/there is currently no account or cloud sync/i),
+  ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Deck", exact: true }).click();
@@ -137,4 +143,98 @@ test("main views do not overflow a 375px viewport", async ({ page }) => {
       document.documentElement.clientWidth,
   );
   expect(overflow).toBe(false);
+});
+
+test("long study cards grow without internal scrolling in light and dark themes", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  const longAnswer = Array.from(
+    { length: 10 },
+    (_, index) =>
+      `Explanation ${index + 1}: Flashcards should remain readable when an answer contains several detailed paragraphs.`,
+  ).join("\n\n");
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "long-content.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          title: "Long Content Deck",
+          cards: [
+            {
+              question:
+                "How should this exceptionallylongunbrokenquestionwordthatmustneveroverflow behave on a narrow mobile screen?",
+              answer: longAnswer,
+            },
+          ],
+        }),
+      ),
+    });
+  await page.getByRole("link", { name: "Study" }).first().click();
+
+  const flashcard = page.getByRole("button", { name: "Show answer" });
+  const cardStyles = await flashcard.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    return {
+      height: element.getBoundingClientRect().height,
+      overflowY: styles.overflowY,
+      whiteSpace: styles.whiteSpace,
+    };
+  });
+  expect(cardStyles.height).toBeGreaterThan(320);
+  expect(cardStyles.overflowY).not.toMatch(/auto|scroll/);
+  expect(cardStyles.whiteSpace).toBe("normal");
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+
+  await flashcard.click();
+  await expect(
+    page.getByText("Explanation 10:", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Incorrect", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Correct", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Deck imported")).toBeHidden({ timeout: 6_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({
+    path: testInfo.outputPath("study-mobile-light.png"),
+    fullPage: true,
+  });
+
+  await page.getByRole("button", { name: /^Theme:/ }).click();
+  await page.getByRole("menuitem", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.getByRole("menu")).toBeHidden();
+  const themeColors = await page.evaluate(() => {
+    const styles = getComputedStyle(document.documentElement);
+    return {
+      primary: styles.getPropertyValue("--primary").trim(),
+      secondary: styles.getPropertyValue("--secondary").trim(),
+      accent: styles.getPropertyValue("--accent").trim(),
+    };
+  });
+  expect(themeColors.primary).toBe("oklch(0.92 0 0)");
+  expect(themeColors.secondary).toBe("oklch(0.27 0 0)");
+  expect(themeColors.accent).toBe("oklch(0.27 0 0)");
+  await page.screenshot({
+    path: testInfo.outputPath("study-mobile-dark.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.screenshot({
+    path: testInfo.outputPath("study-desktop-dark.png"),
+    fullPage: true,
+  });
 });

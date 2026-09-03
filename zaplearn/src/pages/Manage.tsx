@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Copy,
   Download,
+  Info,
   Pencil,
   Play,
   RotateCcw,
@@ -296,6 +297,32 @@ export function Manage() {
           No decks or cards match “{deferredQuery}”.
         </p>
       )}
+      <section
+        aria-labelledby="how-zaplearn-works"
+        className="rounded-xl border bg-card p-6 sm:p-7"
+      >
+        <div className="flex items-start gap-4">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <Info className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h2 id="how-zaplearn-works" className="text-lg font-semibold">
+              How ZapLearn works
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Create a deck or import JSON, then study one card at a time and
+              mark your answer correct or incorrect. Your decks, edits, and
+              progress are saved locally in this browser—there is currently no
+              account or cloud sync.
+            </p>
+            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              Export important decks as JSON for backup or transfer. Clearing
+              this browser’s site data may remove locally saved decks and study
+              history.
+            </p>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

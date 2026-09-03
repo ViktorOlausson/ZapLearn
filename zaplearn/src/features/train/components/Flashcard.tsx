@@ -29,13 +29,13 @@ export function Flashcard({
   return (
     <Button
       variant="outline"
-      className="h-[min(58vh,30rem)] min-h-80 w-full max-w-3xl overflow-hidden rounded-2xl border-border/80 bg-card p-0 text-left shadow-lg transition-shadow hover:border-primary/30 hover:shadow-xl"
+      className="h-auto min-h-80 w-full max-w-3xl overflow-hidden whitespace-normal rounded-2xl border-border/80 bg-card p-0 text-left shadow-lg transition-shadow hover:border-primary/30 hover:shadow-xl"
       onClick={onFlip}
       aria-label={flipped ? "Show question" : "Show answer"}
     >
-      <span className="block h-full w-full [perspective:1200px]">
+      <span className="block w-full [perspective:1200px]">
         <motion.span
-          className="relative block h-full w-full"
+          className="grid min-h-80 w-full"
           initial={false}
           animate={{ rotateY: flipped ? 180 : 0 }}
           transition={
@@ -47,12 +47,12 @@ export function Flashcard({
         >
           <span
             aria-hidden={flipped}
-            className="absolute inset-0 flex flex-col justify-center overflow-y-auto p-7 [backface-visibility:hidden] sm:p-12"
+            className="col-start-1 row-start-1 flex min-h-80 min-w-0 flex-col justify-center p-7 [backface-visibility:hidden] sm:p-12"
           >
             <span className="mb-5 text-xs font-semibold tracking-[0.18em] text-primary uppercase">
               Question
             </span>
-            <span className="text-xl font-medium leading-relaxed sm:text-3xl">
+            <span className="min-w-0 text-xl font-medium leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
               <CardText value={card.question} />
             </span>
             <span className="mt-8 text-sm text-muted-foreground">
@@ -61,12 +61,12 @@ export function Flashcard({
           </span>
           <span
             aria-hidden={!flipped}
-            className="absolute inset-0 flex flex-col justify-center overflow-y-auto bg-card p-7 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-12"
+            className="col-start-1 row-start-1 flex min-h-80 min-w-0 flex-col justify-center bg-card p-7 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-12"
           >
             <span className="mb-5 text-xs font-semibold tracking-[0.18em] text-primary uppercase">
               Answer
             </span>
-            <span className="text-xl font-medium leading-relaxed sm:text-3xl">
+            <span className="min-w-0 text-xl font-medium leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
               <CardText value={card.answer} />
             </span>
             {card.category && (
@@ -75,7 +75,7 @@ export function Flashcard({
               </span>
             )}
             {card.tags.length > 0 && (
-              <span className="mt-3 text-xs text-muted-foreground">
+              <span className="mt-3 min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                 {card.tags.map((tag) => `#${tag}`).join("  ")}
               </span>
             )}

@@ -188,8 +188,8 @@ export function Train() {
           {stats.reviewed === 1 ? "card" : "cards"}.
         </p>
         <div className="mx-auto mt-7 grid max-w-sm grid-cols-2 gap-3">
-          <div className="rounded-xl bg-primary/10 p-4">
-            <p className="text-2xl font-bold text-primary">{stats.correct}</p>
+          <div className="rounded-xl bg-success/10 p-4">
+            <p className="text-2xl font-bold text-success">{stats.correct}</p>
             <p className="text-sm text-muted-foreground">Correct</p>
           </div>
           <div className="rounded-xl bg-muted p-4">
@@ -286,18 +286,19 @@ export function Train() {
           <div className="grid grid-cols-2 gap-3 sm:mx-auto sm:max-w-md">
             <Button
               disabled={grading}
-              variant="outline"
-              className="h-12 border-destructive/30 hover:bg-destructive/10"
+              variant="destructive"
+              className="h-12"
               onClick={() => void answer(false)}
             >
-              <X /> Incorrect <kbd>1</kbd>
+              <X /> Incorrect
             </Button>
             <Button
               disabled={grading}
+              variant="success"
               className="h-12"
               onClick={() => void answer(true)}
             >
-              <Check /> Correct <kbd>2</kbd>
+              <Check /> Correct
             </Button>
           </div>
         ) : (
