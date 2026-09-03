@@ -1,0 +1,30 @@
+{
+  "title": "ZapLearn Test Deck",
+  "lang": "en",
+  "cards": [
+    {
+      "id": "test-card-1",
+      "question": "What is HTTP?",
+      "answer": "Hypertext Transfer Protocol",
+      "category": "Web",
+      "tags": ["http", "web"],
+      "difficulty": 1
+    },
+    {
+      "id": "test-card-2",
+      "question": "What does CSS stand for?",
+      "answer": "Cascading Style Sheets",
+      "category": "Web",
+      "tags": ["css"],
+      "difficulty": 1
+    },
+    {
+      "id": "test-card-3",
+      "question": "What does JSON stand for?",
+      "answer": "JavaScript Object Notation",
+      "category": "Programming",
+      "tags": ["json"],
+      "difficulty": 1
+    }
+  ]
+}

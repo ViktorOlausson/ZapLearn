@@ -1,80 +1,104 @@
-import {z} from "zod";
+import { z } from "zod";
 
-const TrimmedString = z.string().transform((s) => s.trim().replace(/\s+/g, " "))
+import { stableHash } from "@/lib/hash";
 
-export const DifficultSchema = z.union([z.literal(1), z.literal(2), z.literal(3)])
+export const SCHEMA_VERSION = 1;
 
-function stableHash(input: string){
-    let h = 2166136261 >>> 0;
-    for(let i = 0; i < input.length; i++){
-        h ^= input.charCodeAt(i)
-        h = Math.imul(h, 16777619)
-    }
-    return ("00000000" + (h >>> 0).toString(16)).slice(-8)
-}
+const requiredText = (label: string) =>
+  z
+    .string({ error: `${label} must be text` })
+    .trim()
+    .min(1, `${label} is required`);
+const optionalText = z.string().trim().min(1);
 
-const CardBaseSchema = z.object({
-    id: z.string().min(1).optional(),
-    question: z.string().trim().min(1, "Question is required"),
-    answer: z.string().trim().min(1, "Answer is required"),
-    category: TrimmedString.optional(),
-    tags: z.array(TrimmedString).optional().default([]),
-    difficulty: DifficultSchema.optional()
-})
+export const DifficultySchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+]);
 
-//preprocessing, adds defualt values if missing
-export const CardSchema = z.preprocess((raw) => {
-    const c = raw as z.input<typeof CardBaseSchema>
+export const CardSchema = z.object({
+  id: z.string().min(1),
+  question: requiredText("Question"),
+  answer: requiredText("Answer"),
+  category: optionalText.optional(),
+  tags: z.array(optionalText).default([]),
+  difficulty: DifficultySchema.default(2),
+});
 
-    //defualt difficulty = 2 (normal)
-    if(c && (c as any).difficulty == null){
-        (c as any).difficulty = 2;
-    }
+export const ImportedCardSchema = CardSchema.partial({ id: true }).transform(
+  (card) => ({
+    ...card,
+    id: card.id ?? stableHash(`${card.question}\u0000${card.category ?? ""}`),
+    tags: [...new Set(card.tags)],
+  }),
+);
 
-    //generate id if missing: q+::+a
-    if(c && !(c as any).id){
-        const q = (c as any).question ?? "";
-        const a = (c as any).answer ?? "";
-        (c as any).id = stableHash(`${q}::${a}`)
-    }
+export const DeckSourceSchema = z.object({
+  type: z.enum(["import", "seed", "url", "local"]),
+  url: z.string().url().optional(),
+  etag: z.string().optional(),
+  readOnly: z.boolean().optional(),
+});
 
-    // uniq tags
-    if(c && Array.isArray((c as any).tags)){
-        (c as any).tags = Array.from(new Set((c as any).tags.map(String)));
-    }
+export const ImportedDeckSchema = z.object({
+  id: z.string().min(1).optional(),
+  title: requiredText("Title"),
+  lang: z
+    .string()
+    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
+    .optional(),
+  cards: z
+    .array(ImportedCardSchema)
+    .min(1, "A deck must contain at least one card"),
+  schemaVersion: z.number().int().positive().optional(),
+  source: DeckSourceSchema.optional(),
+});
 
-    return c;
-}, CardBaseSchema)
+export const DeckSchema = z.object({
+  id: z.string().min(1),
+  title: requiredText("Title"),
+  lang: z
+    .string()
+    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use a language tag such as sv or sv-SE")
+    .optional(),
+  cards: z.array(CardSchema),
+  schemaVersion: z.number().int().positive(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  source: DeckSourceSchema.optional(),
+});
 
 export type Card = z.infer<typeof CardSchema>;
-
-/** Metadata for game **/
-export const DeckMetaSchema = z.object({
-    title: z.string().trim().min(1, "Title is required"),
-    lang: z.string()
-    .regex(/^[a-z]{2}(-[A-Z]{2})?$/, "Use BCP-47 like 'sv' or 'sv-SE'")
-    .optional()
-    .default("sv")
-})
-
-/** MVP-schema **/
-export const DeckSchema = z.object({
-    ...DeckMetaSchema.shape,
-    cards: z.array(CardSchema).min(1, "At least on Card")
-})
-
+export type DeckSource = z.infer<typeof DeckSourceSchema>;
 export type Deck = z.infer<typeof DeckSchema>;
+export type ImportedDeck = z.infer<typeof ImportedDeckSchema>;
 
-/** Helper: parse text from file and get friendly error for UI **/
-export function parseDeckFile(jsonText: string){
-    try{
-        const data = JSON.parse(jsonText);
-        const parsed = DeckSchema.safeParse(data)
-        if(!parsed.success){
-            return{ok: false as const, error: parsed.error.issues};
-        }
-        return{ok: true as const, deck: parsed.data}
-    }catch(e:any){
-        return{ok: false as const, errors: [{message: e?.message ?? "Invalid JSON"}]}
+export type DeckParseResult =
+  { ok: true; deck: ImportedDeck } | { ok: false; errors: string[] };
+
+export function formatZodIssues(issues: z.core.$ZodIssue[]): string[] {
+  return issues.map((issue) => {
+    if (issue.path[0] === "cards" && typeof issue.path[1] === "number") {
+      const property = issue.path.slice(2).join(".");
+      return `Card ${issue.path[1] + 1}${property ? ` · ${property}` : ""}: ${issue.message}`;
     }
+    const path = issue.path.length ? issue.path.join(".") : "deck";
+    return `${path}: ${issue.message}`;
+  });
+}
+
+export function parseDeckFile(jsonText: string): DeckParseResult {
+  let input: unknown;
+  try {
+    input = JSON.parse(jsonText);
+  } catch (error: unknown) {
+    const detail = error instanceof Error ? error.message : "Invalid JSON";
+    return { ok: false, errors: [`Could not read JSON: ${detail}`] };
+  }
+
+  const result = ImportedDeckSchema.safeParse(input);
+  return result.success
+    ? { ok: true, deck: result.data }
+    : { ok: false, errors: formatZodIssues(result.error.issues) };
 }

@@ -1,21 +1,27 @@
-import z from "zod";
+import { z } from "zod";
 
-/** 0=nytt, 1=lärs, 2=behärskat (MVP) */
-export const BucketSchema = z.union([z.literal(0), z.literal(1), z.literal(2)])
+export const BucketSchema = z.union([z.literal(0), z.literal(1), z.literal(2)]);
 
-export const IsoDateString = z.string().refine((s) => !Number.isNaN(Date.parse(s)), {message: "Invalid ISO date"})
+export const CardProgressSchema = z.object({
+  cardId: z.string().min(1),
+  bucket: BucketSchema,
+  correctCount: z.number().int().nonnegative(),
+  incorrectCount: z.number().int().nonnegative(),
+  intervalMinutes: z.number().nonnegative(),
+  ease: z.number().min(1.3).max(3).default(2.3),
+  dueAt: z.string().datetime(),
+  lastReviewedAt: z.string().datetime().optional(),
+});
 
-export const DeckProgressSchema = z.object({
-    bucket: BucketSchema,
-    ease: z.number().min(1.3).max(3.0).default(2.3),
-    intervalDays: z.number().min(0).default(0),
-    dueAt: IsoDateString,
-    reps: z.number().min(0).default(0),
-    lapses: z.number().min(0).default(0),
-})
+export const ProgressDocumentSchema = z.object({
+  schemaVersion: z.number().int().positive(),
+  deckId: z.string().min(1),
+  cards: z.record(z.string(), CardProgressSchema),
+  updatedAt: z.string().datetime(),
+});
 
-// kolla https://zod.dev/api#records om det blir fel
-export const ProgressMapSchema = z.record(z.string(), DeckProgressSchema)
+export type Bucket = z.infer<typeof BucketSchema>;
+export type CardProgress = z.infer<typeof CardProgressSchema>;
+export type ProgressDocument = z.infer<typeof ProgressDocumentSchema>;
 
-export type CardProgress = z.infer<typeof DeckProgressSchema>
-export type ProgressMap = z.infer<typeof ProgressMapSchema>
+export const PROGRESS_SCHEMA_VERSION = 2;
