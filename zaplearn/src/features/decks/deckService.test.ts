@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import mixedDeckFixture from "../../../fixtures/mixed-deck.json?raw";
+import multipleChoiceDeckFixture from "../../../fixtures/multiple-choice-deck.json?raw";
+
 import {
   createDeck,
   fetchDeckFromUrl,
@@ -7,6 +10,7 @@ import {
   materializeDeck,
   readDeckFile,
 } from "@/features/decks/deckService";
+import { parseDeckFile } from "@/types/deck";
 
 describe("file deck import", () => {
   afterEach(() => {
@@ -30,6 +34,29 @@ describe("file deck import", () => {
     if (result.ok)
       expect(materializeDeck(result.deck, "new").cards).toHaveLength(1);
   });
+  it("keeps the example multiple-choice and mixed fixtures importable", () => {
+    const multipleChoice = parseDeckFile(multipleChoiceDeckFixture);
+    const mixed = parseDeckFile(mixedDeckFixture);
+
+    expect(multipleChoice.ok).toBe(true);
+    expect(mixed.ok).toBe(true);
+    if (multipleChoice.ok) {
+      expect(multipleChoice.deck.cards).toHaveLength(5);
+      expect(
+        multipleChoice.deck.cards.every(
+          (card) => card.type === "multiple-choice",
+        ),
+      ).toBe(true);
+    }
+    if (mixed.ok) {
+      expect(mixed.deck.cards.some((card) => card.type === undefined)).toBe(
+        true,
+      );
+      expect(
+        mixed.deck.cards.some((card) => card.type === "multiple-choice"),
+      ).toBe(true);
+    }
+  });
   it("preserves a supplied deck ID and generates IDs for local decks", async () => {
     const imported = await readDeckFile(
       new File(
@@ -43,6 +70,40 @@ describe("file deck import", () => {
     if (imported.ok)
       expect(materializeDeck(imported.deck, "new").id).toBe("stable-deck");
     expect(createDeck("Local").id).toMatch(/^deck-/);
+  });
+  it("imports and round-trips a mixed deck with multiple-choice options", async () => {
+    const imported = await readDeckFile(
+      new File(
+        [
+          JSON.stringify({
+            title: "Mixed deck",
+            cards: [
+              { question: "Traditional?", answer: "Yes" },
+              {
+                type: "multiple-choice",
+                question: "Choose B",
+                answer: "B",
+                options: ["A", "B", "C"],
+              },
+            ],
+          }),
+        ],
+        "mixed.json",
+      ),
+    );
+
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const exported = JSON.stringify(materializeDeck(imported.deck, "new"));
+    const reimported = parseDeckFile(exported);
+    expect(reimported.ok).toBe(true);
+    if (reimported.ok) {
+      expect(reimported.deck.cards).toHaveLength(2);
+      expect(reimported.deck.cards[1]).toMatchObject({
+        type: "multiple-choice",
+        options: ["A", "B", "C"],
+      });
+    }
   });
   it("rejects oversized files before parsing them", async () => {
     const result = await readDeckFile(

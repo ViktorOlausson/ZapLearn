@@ -147,6 +147,136 @@ test("creates a local deck and opens the empty editor", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("imports, studies, persists, and exports multiple-choice cards", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "multiple-choice.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          title: "Multiple Choice Deck",
+          cards: [
+            {
+              type: "multiple-choice",
+              question: "What does WBS stand for?",
+              answer: "Work Breakdown Structure",
+              options: [
+                "Workflow Business System",
+                "Work Breakdown Structure",
+                "Work Balance Schedule",
+              ],
+            },
+            {
+              type: "multiple-choice",
+              question: "Which protocol encrypts web traffic?",
+              answer: "HTTPS",
+              options: ["FTP", "HTTPS", "SMTP"],
+            },
+          ],
+        }),
+      ),
+    });
+
+  await page.getByRole("link", { name: "Edit Multiple Choice Deck" }).click();
+  await expect(page.getByRole("combobox", { name: "Card 1 type" })).toHaveText(
+    "Multiple choice",
+  );
+  await page
+    .getByRole("textbox", { name: "Option 1", exact: true })
+    .first()
+    .fill("Workflow Planning System");
+  await expect(page.getByTestId("save-status")).toHaveText("Saving…");
+  await expect(page.getByTestId("save-status")).toHaveText("Saved", {
+    timeout: 3_000,
+  });
+  await page.reload();
+  await expect(
+    page.getByRole("textbox", { name: "Option 1", exact: true }).first(),
+  ).toHaveValue("Workflow Planning System");
+  await page.getByRole("link", { name: "ZapLearn" }).click();
+  await page.getByRole("link", { name: "Study" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "What does WBS stand for?" }),
+  ).toBeVisible();
+  const initialOrder = await page
+    .getByRole("button", { name: /^Option \d:/ })
+    .evaluateAll((options) =>
+      options.map((option) => option.getAttribute("aria-label")),
+    );
+  await page.getByRole("button", { name: /Workflow Planning System/ }).click();
+  await expect(page.getByText("Incorrect.")).toBeVisible();
+  await expect(page.getByText(/Correct answer:/)).toContainText(
+    "Work Breakdown Structure",
+  );
+  await expect(
+    page.getByRole("button", { name: /Work Balance Schedule/ }),
+  ).toBeDisabled();
+  expect(
+    await page
+      .getByRole("button", { name: /^Option \d:/ })
+      .evaluateAll((options) =>
+        options.map((option) => option.getAttribute("aria-label")),
+      ),
+  ).toEqual(initialOrder);
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: /^Theme:/ }).click();
+  await page.getByRole("menuitem", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(
+    page.getByRole("button", { name: /Work Breakdown Structure/ }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: /^Next/ }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Which protocol encrypts web traffic?",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Incorrect.")).toBeHidden();
+  await page.getByRole("button", { name: /HTTPS/ }).click();
+  await expect(page.getByText("Correct!")).toBeVisible();
+  await page.getByRole("button", { name: /^Finish/ }).click();
+  await expect(page.getByText("Session complete")).toBeVisible();
+  await expect(page.getByText("1", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Back to dashboard" }).click();
+  await expect(page.getByText("Caught up")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("Caught up")).toBeVisible();
+  await page.getByRole("link", { name: "Manage all" }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Backup deck", exact: true }).click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  const exported = JSON.parse(await readFile(downloadPath!, "utf8")) as {
+    cards: Array<{ type?: string; options?: string[] }>;
+  };
+  expect(exported.cards[0]).toMatchObject({
+    type: "multiple-choice",
+    options: expect.arrayContaining(["Work Breakdown Structure"]),
+  });
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+});
+
 test("requests persistent storage after the first deck is created", async ({
   page,
 }) => {

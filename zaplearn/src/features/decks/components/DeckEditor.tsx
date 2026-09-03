@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Copy, Plus, Search, Trash2 } from "lucide-react";
+import { Check, Copy, Plus, Search, Trash2, X } from "lucide-react";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -17,16 +17,55 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createId } from "@/lib/hash";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
-import { DifficultySchema, type Deck } from "@/types/deck";
+import {
+  DifficultySchema,
+  isMultipleChoiceCard,
+  type Card,
+  type Deck,
+  type MultipleChoiceCard,
+} from "@/types/deck";
 
-const EditorCardSchema = z.object({
+const EditorCardShape = {
   id: z.string().min(1),
   question: z.string().trim().min(1, "Question is required"),
   answer: z.string().trim().min(1, "Answer is required"),
   category: z.string().trim().optional(),
   tags: z.array(z.string()),
   difficulty: DifficultySchema,
+};
+const EditorFlashcardSchema = z.object({
+  ...EditorCardShape,
+  type: z.literal("flashcard").optional(),
 });
+const EditorMultipleChoiceSchema = z
+  .object({
+    ...EditorCardShape,
+    type: z.literal("multiple-choice"),
+    options: z
+      .array(z.string().trim().min(1, "Option cannot be empty"))
+      .min(2, "Add at least 2 answer options")
+      .max(6, "Use no more than 6 answer options"),
+  })
+  .superRefine((card, context) => {
+    if (new Set(card.options).size !== card.options.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: "Answer options must be unique",
+      });
+    }
+    if (card.options.filter((option) => option === card.answer).length !== 1) {
+      context.addIssue({
+        code: "custom",
+        path: ["answer"],
+        message: "Choose exactly one option as the correct answer",
+      });
+    }
+  });
+const EditorCardSchema = z.discriminatedUnion("type", [
+  EditorFlashcardSchema,
+  EditorMultipleChoiceSchema,
+]);
 const EditorSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
   lang: z
@@ -38,7 +77,7 @@ const EditorSchema = z.object({
 });
 type EditorValues = z.infer<typeof EditorSchema>;
 
-function emptyCard() {
+function emptyCard(): Card {
   return {
     id: createId("card"),
     question: "",
@@ -46,6 +85,17 @@ function emptyCard() {
     category: "",
     tags: [],
     difficulty: 2 as const,
+  };
+}
+
+function baseCard(card: Card) {
+  return {
+    id: card.id,
+    question: card.question,
+    answer: card.answer,
+    category: card.category,
+    tags: card.tags,
+    difficulty: card.difficulty,
   };
 }
 
@@ -64,6 +114,12 @@ function cardMatches(
     .join(" ")
     .toLowerCase()
     .includes(query.toLowerCase());
+}
+
+function fieldErrorMessage(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const message = Reflect.get(value, "message");
+  return typeof message === "string" ? message : undefined;
 }
 
 export function DeckEditor({
@@ -122,6 +178,76 @@ export function DeckEditor({
       () => setSaveState("invalid"),
     )();
   }, [handleSubmit, onSave, reset]);
+
+  function changeCardType(
+    index: number,
+    type: "flashcard" | "multiple-choice",
+  ) {
+    const card = form.getValues(`cards.${index}`);
+    if (type === "multiple-choice") {
+      const options = isMultipleChoiceCard(card)
+        ? card.options
+        : card.answer.trim()
+          ? [card.answer]
+          : [];
+      form.setValue(
+        `cards.${index}`,
+        { ...baseCard(card), type: "multiple-choice", options },
+        { shouldDirty: true, shouldValidate: true },
+      );
+      return;
+    }
+    form.setValue(
+      `cards.${index}`,
+      { ...baseCard(card), type: "flashcard" },
+      { shouldDirty: true, shouldValidate: true },
+    );
+  }
+
+  function updateOption(index: number, optionIndex: number, value: string) {
+    const card = form.getValues(`cards.${index}`);
+    if (!isMultipleChoiceCard(card)) return;
+    const previous = card.options[optionIndex];
+    const options = card.options.map((option, currentIndex) =>
+      currentIndex === optionIndex ? value : option,
+    );
+    form.setValue(
+      `cards.${index}`,
+      {
+        ...card,
+        options,
+        answer: card.answer === previous ? value : card.answer,
+      },
+      { shouldDirty: true, shouldValidate: true },
+    );
+  }
+
+  function addOption(index: number) {
+    const card = form.getValues(`cards.${index}`);
+    if (!isMultipleChoiceCard(card) || card.options.length >= 6) return;
+    form.setValue(`cards.${index}.options`, [...card.options, ""], {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }
+
+  function removeOption(index: number, optionIndex: number) {
+    const card = form.getValues(`cards.${index}`);
+    if (!isMultipleChoiceCard(card)) return;
+    const removed = card.options[optionIndex];
+    const options = card.options.filter(
+      (_, currentIndex) => currentIndex !== optionIndex,
+    );
+    form.setValue(
+      `cards.${index}`,
+      {
+        ...card,
+        options,
+        answer: card.answer === removed ? "" : card.answer,
+      },
+      { shouldDirty: true, shouldValidate: true },
+    );
+  }
 
   useEffect(() => {
     if (!formState.isDirty) return;
@@ -241,144 +367,297 @@ export function DeckEditor({
               className="rounded-xl border p-4"
               key={fields[index].fieldId}
             >
-              <div className="mb-3 flex items-center justify-between">
-                <Badge variant="secondary">Card {index + 1}</Badge>
-                <div className="flex gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() =>
-                      insert(index + 1, {
-                        id: createId("card"),
-                        question:
-                          values.cards?.[index]?.question ??
-                          fields[index].question,
-                        answer:
-                          values.cards?.[index]?.answer ?? fields[index].answer,
-                        category:
-                          values.cards?.[index]?.category ??
-                          fields[index].category,
-                        tags: values.cards?.[index]?.tags ?? fields[index].tags,
-                        difficulty:
-                          values.cards?.[index]?.difficulty ??
-                          fields[index].difficulty,
-                      })
-                    }
-                    aria-label={`Duplicate card ${index + 1}`}
-                    title="Duplicate card"
-                  >
-                    <Copy />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => remove(index)}
-                    aria-label={`Delete card ${index + 1}`}
-                    title="Delete card"
-                  >
-                    <Trash2 className="text-destructive" />
-                  </Button>
-                </div>
-              </div>
-              <div className="grid gap-3">
-                <div>
-                  <label
-                    className="text-sm font-medium"
-                    htmlFor={`question-${index}`}
-                  >
-                    Question
-                  </label>
-                  <Textarea
-                    id={`question-${index}`}
-                    {...register(`cards.${index}.question`)}
-                    aria-invalid={Boolean(
-                      formState.errors.cards?.[index]?.question,
-                    )}
-                  />
-                  <p className="text-sm text-destructive">
-                    {formState.errors.cards?.[index]?.question?.message}
-                  </p>
-                </div>
-                <div>
-                  <label
-                    className="text-sm font-medium"
-                    htmlFor={`answer-${index}`}
-                  >
-                    Answer
-                  </label>
-                  <Textarea
-                    id={`answer-${index}`}
-                    {...register(`cards.${index}.answer`)}
-                    aria-invalid={Boolean(
-                      formState.errors.cards?.[index]?.answer,
-                    )}
-                  />
-                  <p className="text-sm text-destructive">
-                    {formState.errors.cards?.[index]?.answer?.message}
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label
-                      className="text-sm font-medium"
-                      htmlFor={`category-${index}`}
-                    >
-                      Category
-                    </label>
-                    <Input
-                      id={`category-${index}`}
-                      {...register(`cards.${index}.category`)}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      className="text-sm font-medium"
-                      htmlFor={`tags-${index}`}
-                    >
-                      Tags
-                    </label>
-                    <Input
-                      id={`tags-${index}`}
-                      defaultValue={values.cards?.[index]?.tags?.join(", ")}
-                      onBlur={(event) =>
-                        form.setValue(
-                          `cards.${index}.tags`,
-                          event.target.value
-                            .split(",")
-                            .map((tag) => tag.trim())
-                            .filter(Boolean),
-                          { shouldDirty: true },
-                        )
-                      }
-                      placeholder="planning, WBS"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Difficulty</label>
-                    <Select
-                      value={String(values.cards?.[index]?.difficulty ?? 2)}
-                      onValueChange={(value) =>
-                        form.setValue(
-                          `cards.${index}.difficulty`,
-                          Number(value) as 1 | 2 | 3,
-                          { shouldDirty: true },
-                        )
-                      }
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Easy</SelectItem>
-                        <SelectItem value="2">Medium</SelectItem>
-                        <SelectItem value="3">Hard</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
+              {(() => {
+                const draft = (values.cards?.[index] ?? fields[index]) as
+                  | Partial<Card>
+                  | (Partial<MultipleChoiceCard> & { options?: string[] });
+                const cardType =
+                  draft.type === "multiple-choice"
+                    ? "multiple-choice"
+                    : "flashcard";
+                const options =
+                  cardType === "multiple-choice" && "options" in draft
+                    ? (draft.options ?? [])
+                    : [];
+                const cardErrors = formState.errors.cards?.[index];
+                const optionsError =
+                  cardErrors && "options" in cardErrors
+                    ? fieldErrorMessage(cardErrors.options)
+                    : undefined;
+                return (
+                  <>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="secondary">Card {index + 1}</Badge>
+                        {cardType === "multiple-choice" && (
+                          <Badge variant="outline">Multiple choice</Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            insert(index + 1, {
+                              id: createId("card"),
+                              question:
+                                values.cards?.[index]?.question ??
+                                fields[index].question,
+                              answer:
+                                values.cards?.[index]?.answer ??
+                                fields[index].answer,
+                              category:
+                                values.cards?.[index]?.category ??
+                                fields[index].category,
+                              tags:
+                                values.cards?.[index]?.tags ??
+                                fields[index].tags,
+                              difficulty:
+                                values.cards?.[index]?.difficulty ??
+                                fields[index].difficulty,
+                              ...(cardType === "multiple-choice"
+                                ? {
+                                    type: "multiple-choice" as const,
+                                    options,
+                                  }
+                                : { type: "flashcard" as const }),
+                            })
+                          }
+                          aria-label={`Duplicate card ${index + 1}`}
+                          title="Duplicate card"
+                        >
+                          <Copy />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          aria-label={`Delete card ${index + 1}`}
+                          title="Delete card"
+                        >
+                          <Trash2 className="text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid gap-3">
+                      <div className="max-w-xs">
+                        <label className="text-sm font-medium">Card type</label>
+                        <Select
+                          value={cardType}
+                          onValueChange={(value) =>
+                            changeCardType(
+                              index,
+                              value as "flashcard" | "multiple-choice",
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            aria-label={`Card ${index + 1} type`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="flashcard">Flashcard</SelectItem>
+                            <SelectItem value="multiple-choice">
+                              Multiple choice
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <label
+                          className="text-sm font-medium"
+                          htmlFor={`question-${index}`}
+                        >
+                          Question
+                        </label>
+                        <Textarea
+                          id={`question-${index}`}
+                          {...register(`cards.${index}.question`)}
+                          aria-invalid={Boolean(
+                            formState.errors.cards?.[index]?.question,
+                          )}
+                        />
+                        <p className="text-sm text-destructive">
+                          {formState.errors.cards?.[index]?.question?.message}
+                        </p>
+                      </div>
+                      {cardType === "flashcard" ? (
+                        <div>
+                          <label
+                            className="text-sm font-medium"
+                            htmlFor={`answer-${index}`}
+                          >
+                            Answer
+                          </label>
+                          <Textarea
+                            id={`answer-${index}`}
+                            {...register(`cards.${index}.answer`)}
+                            aria-invalid={Boolean(
+                              formState.errors.cards?.[index]?.answer,
+                            )}
+                          />
+                          <p className="text-sm text-destructive">
+                            {formState.errors.cards?.[index]?.answer?.message}
+                          </p>
+                        </div>
+                      ) : (
+                        <fieldset className="rounded-xl border bg-muted/20 p-4">
+                          <legend className="px-1 text-sm font-medium">
+                            Answer options
+                          </legend>
+                          <p className="mb-3 text-sm text-muted-foreground">
+                            Add 2–6 options and select the one correct answer.
+                          </p>
+                          <div className="grid gap-2">
+                            {options.map((option, optionIndex) => (
+                              <div
+                                className="flex min-w-0 items-center gap-2"
+                                key={`${fields[index].fieldId}-option-${optionIndex}`}
+                              >
+                                <input
+                                  type="radio"
+                                  name={`correct-option-${fields[index].fieldId}`}
+                                  checked={
+                                    Boolean(option) && draft.answer === option
+                                  }
+                                  disabled={!option.trim()}
+                                  onChange={() =>
+                                    form.setValue(
+                                      `cards.${index}.answer`,
+                                      option,
+                                      {
+                                        shouldDirty: true,
+                                        shouldValidate: true,
+                                      },
+                                    )
+                                  }
+                                  aria-label={`Set option ${optionIndex + 1} as correct`}
+                                  className="size-4 shrink-0 accent-primary"
+                                />
+                                <Input
+                                  value={option}
+                                  onChange={(event) =>
+                                    updateOption(
+                                      index,
+                                      optionIndex,
+                                      event.target.value,
+                                    )
+                                  }
+                                  aria-label={`Option ${optionIndex + 1}`}
+                                  placeholder={`Answer option ${optionIndex + 1}`}
+                                  className="min-w-0"
+                                />
+                                {Boolean(option) && draft.answer === option && (
+                                  <Badge
+                                    className="hidden gap-1 sm:inline-flex"
+                                    variant="secondary"
+                                  >
+                                    <Check className="size-3" /> Correct
+                                  </Badge>
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() =>
+                                    removeOption(index, optionIndex)
+                                  }
+                                  aria-label={`Remove option ${optionIndex + 1}`}
+                                >
+                                  <X />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="mt-3"
+                            disabled={options.length >= 6}
+                            onClick={() => addOption(index)}
+                          >
+                            <Plus /> Add option
+                          </Button>
+                          <p className="mt-2 text-sm text-destructive">
+                            {optionsError ??
+                              formState.errors.cards?.[index]?.answer?.message}
+                          </p>
+                        </fieldset>
+                      )}
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label
+                            className="text-sm font-medium"
+                            htmlFor={`category-${index}`}
+                          >
+                            Category
+                          </label>
+                          <Input
+                            id={`category-${index}`}
+                            {...register(`cards.${index}.category`)}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            className="text-sm font-medium"
+                            htmlFor={`tags-${index}`}
+                          >
+                            Tags
+                          </label>
+                          <Input
+                            id={`tags-${index}`}
+                            defaultValue={values.cards?.[index]?.tags?.join(
+                              ", ",
+                            )}
+                            onBlur={(event) =>
+                              form.setValue(
+                                `cards.${index}.tags`,
+                                event.target.value
+                                  .split(",")
+                                  .map((tag) => tag.trim())
+                                  .filter(Boolean),
+                                { shouldDirty: true },
+                              )
+                            }
+                            placeholder="planning, WBS"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">
+                            Difficulty
+                          </label>
+                          <Select
+                            value={String(
+                              values.cards?.[index]?.difficulty ?? 2,
+                            )}
+                            onValueChange={(value) =>
+                              form.setValue(
+                                `cards.${index}.difficulty`,
+                                Number(value) as 1 | 2 | 3,
+                                { shouldDirty: true },
+                              )
+                            }
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1">Easy</SelectItem>
+                              <SelectItem value="2">Medium</SelectItem>
+                              <SelectItem value="3">Hard</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </article>
           ))}
         </div>

@@ -17,24 +17,77 @@ export const DifficultySchema = z.union([
   z.literal(3),
 ]);
 
-export const CardSchema = z
-  .object({
-    id: z.string().min(1),
-    question: requiredText("Question"),
-    answer: requiredText("Answer"),
-    category: optionalText.optional(),
-    tags: z.array(optionalText).default([]),
-    difficulty: DifficultySchema.default(2),
-  })
-  .strip();
+const cardShape = <T extends z.ZodType>(id: T) => ({
+  id,
+  question: requiredText("Question"),
+  answer: requiredText("Answer"),
+  category: optionalText.optional(),
+  tags: z.array(optionalText).default([]),
+  difficulty: DifficultySchema.default(2),
+});
 
-export const ImportedCardSchema = CardSchema.partial({ id: true }).transform(
-  (card) => ({
-    ...card,
-    id: card.id ?? stableHash(`${card.question}\u0000${card.category ?? ""}`),
-    tags: [...new Set(card.tags)],
-  }),
+function flashcardSchema<T extends z.ZodType>(id: T) {
+  return z
+    .object({
+      ...cardShape(id),
+      type: z.literal("flashcard").optional(),
+    })
+    .strip();
+}
+
+function multipleChoiceCardSchema<T extends z.ZodType>(id: T) {
+  return z
+    .object({
+      ...cardShape(id),
+      type: z.literal("multiple-choice"),
+      options: z
+        .array(requiredText("Option"), {
+          error: "Multiple-choice options are required",
+        })
+        .min(2, "Multiple-choice cards require at least 2 options")
+        .max(6, "Multiple-choice cards support at most 6 options"),
+    })
+    .strip()
+    .superRefine((card, context) => {
+      if (new Set(card.options).size !== card.options.length) {
+        context.addIssue({
+          code: "custom",
+          path: ["options"],
+          message: "Multiple-choice options contain duplicates",
+        });
+      }
+      if (
+        card.options.filter((option) => option === card.answer).length !== 1
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["answer"],
+          message: "The correct answer must appear exactly once in options",
+        });
+      }
+    });
+}
+
+export const FlashcardSchema = flashcardSchema(z.string().min(1));
+export const MultipleChoiceCardSchema = multipleChoiceCardSchema(
+  z.string().min(1),
 );
+
+export const CardSchema = z.discriminatedUnion("type", [
+  FlashcardSchema,
+  MultipleChoiceCardSchema,
+]);
+
+const ImportedCardBaseSchema = z.discriminatedUnion("type", [
+  flashcardSchema(z.string().min(1).optional()),
+  multipleChoiceCardSchema(z.string().min(1).optional()),
+]);
+
+export const ImportedCardSchema = ImportedCardBaseSchema.transform((card) => ({
+  ...card,
+  id: card.id ?? stableHash(`${card.question}\u0000${card.category ?? ""}`),
+  tags: [...new Set(card.tags)],
+}));
 
 export const DeckSourceSchema = z
   .object({
@@ -78,12 +131,18 @@ export const DeckSchema = z
   .strip();
 
 export type Card = z.infer<typeof CardSchema>;
+export type Flashcard = z.infer<typeof FlashcardSchema>;
+export type MultipleChoiceCard = z.infer<typeof MultipleChoiceCardSchema>;
 export type DeckSource = z.infer<typeof DeckSourceSchema>;
 export type Deck = z.infer<typeof DeckSchema>;
 export type ImportedDeck = z.infer<typeof ImportedDeckSchema>;
 
 export type DeckParseResult =
   { ok: true; deck: ImportedDeck } | { ok: false; errors: string[] };
+
+export function isMultipleChoiceCard(card: Card): card is MultipleChoiceCard {
+  return card.type === "multiple-choice";
+}
 
 export function formatZodIssues(issues: z.core.$ZodIssue[]): string[] {
   return issues.map((issue) => {

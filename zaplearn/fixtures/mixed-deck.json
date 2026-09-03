@@ -1,0 +1,64 @@
+{
+  "title": "Project Management – Mixed Practice",
+  "lang": "en",
+  "cards": [
+    {
+      "question": "What is a project?",
+      "answer": "A temporary effort undertaken to create a unique product, service, or result.",
+      "category": "Fundamentals",
+      "tags": ["project", "definition"],
+      "difficulty": 1
+    },
+    {
+      "type": "multiple-choice",
+      "question": "What does WBS stand for?",
+      "answer": "Work Breakdown Structure",
+      "options": [
+        "Workflow Business System",
+        "Work Breakdown Structure",
+        "Work Balance Schedule",
+        "Written Business Specification"
+      ],
+      "category": "Planning",
+      "tags": ["wbs", "scope", "planning"],
+      "difficulty": 1
+    },
+    {
+      "question": "What is a project milestone?",
+      "answer": "A significant point or event used to track progress in a project schedule.",
+      "category": "Scheduling",
+      "tags": ["milestone", "schedule"],
+      "difficulty": 2
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which document formally authorizes a project?",
+      "answer": "Project charter",
+      "options": [
+        "Risk register",
+        "Project charter",
+        "Lessons-learned register",
+        "Status report"
+      ],
+      "category": "Initiation",
+      "tags": ["charter", "initiation"],
+      "difficulty": 2
+    },
+    {
+      "question": "What is scope creep?",
+      "answer": "Uncontrolled expansion of project scope without corresponding adjustments to time, cost, or resources.",
+      "category": "Scope",
+      "tags": ["scope-creep", "change-control"],
+      "difficulty": 2
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which response removes a threat by changing the project plan?",
+      "answer": "Avoid",
+      "options": ["Accept", "Transfer", "Avoid", "Escalate"],
+      "category": "Risk",
+      "tags": ["risk", "response-strategy"],
+      "difficulty": 3
+    }
+  ]
+}

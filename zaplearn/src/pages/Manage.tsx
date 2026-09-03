@@ -325,8 +325,8 @@ export function Manage() {
               How ZapLearn works
             </h2>
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Create a deck or import JSON, then study one card at a time and
-              mark your answer correct or incorrect. Your decks, edits, and
+              Create a deck or import JSON, then reveal traditional flashcards
+              or answer multiple-choice questions. Your decks, edits, and
               progress are saved locally in this browser—there is currently no
               account or cloud sync.
             </p>

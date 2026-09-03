@@ -51,4 +51,34 @@ describe("DeckEditor", () => {
     await user.click(screen.getByRole("button", { name: "Delete card 2" }));
     expect(screen.getAllByText(/Card \d/)).toHaveLength(1);
   });
+
+  it("converts a flashcard and saves multiple-choice options", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DeckEditor deck={deck} onSave={onSave} />);
+
+    await user.click(screen.getByRole("combobox", { name: "Card 1 type" }));
+    await user.click(screen.getByRole("option", { name: "Multiple choice" }));
+    expect(screen.getByLabelText("Option 1")).toHaveValue("Original answer");
+    expect(screen.getByLabelText("Set option 1 as correct")).toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Add option" }));
+    await user.type(screen.getByLabelText("Option 2"), "Plausible distractor");
+
+    await waitFor(
+      () =>
+        expect(onSave).toHaveBeenCalledWith(
+          expect.objectContaining({
+            cards: [
+              expect.objectContaining({
+                type: "multiple-choice",
+                answer: "Original answer",
+                options: ["Original answer", "Plausible distractor"],
+              }),
+            ],
+          }),
+        ),
+      { timeout: 1500 },
+    );
+  });
 });
