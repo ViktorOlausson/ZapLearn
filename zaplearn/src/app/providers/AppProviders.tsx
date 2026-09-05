@@ -1,5 +1,4 @@
 import { useEffect, type PropsWithChildren } from "react";
-import { ThemeProvider, useTheme } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useDeckStore } from "@/features/decks/deckStore";
@@ -14,7 +13,7 @@ function Bootstrap({ children }: PropsWithChildren) {
   const checkStoragePersistence = useStoragePersistenceStore(
     (state) => state.check,
   );
-  const { setTheme } = useTheme();
+  const theme = useSettingsStore((state) => state.theme);
   useEffect(() => {
     void (async () => {
       await initializeDecks();
@@ -22,8 +21,19 @@ function Bootstrap({ children }: PropsWithChildren) {
     })();
   }, [initializeDecks, saveDeck]);
   useEffect(() => {
-    void initializeSettings().then(setTheme);
-  }, [initializeSettings, setTheme]);
+    void initializeSettings().catch(() => undefined);
+  }, [initializeSettings]);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const dark = theme === "dark" || (theme === "system" && media.matches);
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [theme]);
   useEffect(() => {
     void checkStoragePersistence();
   }, [checkStoragePersistence]);
@@ -37,10 +47,8 @@ function Bootstrap({ children }: PropsWithChildren) {
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-      <TooltipProvider delayDuration={300}>
-        <Bootstrap>{children}</Bootstrap>
-      </TooltipProvider>
-    </ThemeProvider>
+    <TooltipProvider delayDuration={300}>
+      <Bootstrap>{children}</Bootstrap>
+    </TooltipProvider>
   );
 }

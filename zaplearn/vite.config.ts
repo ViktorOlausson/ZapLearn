@@ -2,6 +2,23 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
+import { readFileSync } from "node:fs";
+
+// Match the production policy during preview and browser verification.
+const previewHeaders = Object.fromEntries(
+  readFileSync(new URL("./public/_headers", import.meta.url), "utf8")
+    .split(/\r?\n\r?\n/)[0]
+    .split(/\r?\n/)
+    .slice(1)
+    .filter(Boolean)
+    .map((line) => {
+      const separator = line.indexOf(":");
+      return [
+        line.slice(0, separator).trim(),
+        line.slice(separator + 1).trim(),
+      ];
+    }),
+);
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
@@ -43,6 +60,7 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },
+  preview: { headers: previewHeaders },
   build: {
     chunkSizeWarningLimit: 600,
   },

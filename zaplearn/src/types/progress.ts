@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { IdSchema } from "@/types/id";
 
 export const BucketSchema = z.union([z.literal(0), z.literal(1), z.literal(2)]);
 
 export const CardProgressSchema = z.object({
-  cardId: z.string().min(1),
+  cardId: IdSchema,
   bucket: BucketSchema,
   correctCount: z.number().int().nonnegative(),
   incorrectCount: z.number().int().nonnegative(),
@@ -15,8 +16,8 @@ export const CardProgressSchema = z.object({
 
 export const ProgressDocumentSchema = z.object({
   schemaVersion: z.number().int().positive(),
-  deckId: z.string().min(1),
-  cards: z.record(z.string(), CardProgressSchema),
+  deckId: IdSchema,
+  cards: z.record(IdSchema, CardProgressSchema),
   updatedAt: z.string().datetime(),
 });
 

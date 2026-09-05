@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { IdSchema } from "@/types/id";
+
 import { stableHash } from "@/lib/hash";
 
 export const SCHEMA_VERSION = 1;
@@ -68,10 +70,8 @@ function multipleChoiceCardSchema<T extends z.ZodType>(id: T) {
     });
 }
 
-export const FlashcardSchema = flashcardSchema(z.string().min(1));
-export const MultipleChoiceCardSchema = multipleChoiceCardSchema(
-  z.string().min(1),
-);
+export const FlashcardSchema = flashcardSchema(IdSchema);
+export const MultipleChoiceCardSchema = multipleChoiceCardSchema(IdSchema);
 
 export const CardSchema = z.discriminatedUnion("type", [
   FlashcardSchema,
@@ -79,8 +79,8 @@ export const CardSchema = z.discriminatedUnion("type", [
 ]);
 
 const ImportedCardBaseSchema = z.discriminatedUnion("type", [
-  flashcardSchema(z.string().min(1).optional()),
-  multipleChoiceCardSchema(z.string().min(1).optional()),
+  flashcardSchema(IdSchema.optional()),
+  multipleChoiceCardSchema(IdSchema.optional()),
 ]);
 
 export const ImportedCardSchema = ImportedCardBaseSchema.transform((card) => ({
@@ -100,7 +100,7 @@ export const DeckSourceSchema = z
 
 export const ImportedDeckSchema = z
   .object({
-    id: z.string().min(1).optional(),
+    id: IdSchema.optional(),
     title: requiredText("Title"),
     lang: z
       .string()
@@ -108,7 +108,11 @@ export const ImportedDeckSchema = z
       .optional(),
     cards: z
       .array(ImportedCardSchema)
-      .min(1, "A deck must contain at least one card"),
+      .min(1, "A deck must contain at least one card")
+      .refine(
+        (cards) => new Set(cards.map((card) => card.id)).size === cards.length,
+        "Cards must have unique IDs; avoid duplicate questions and categories",
+      ),
     schemaVersion: z.number().int().positive().optional(),
     source: DeckSourceSchema.optional(),
   })
@@ -116,7 +120,7 @@ export const ImportedDeckSchema = z
 
 export const DeckSchema = z
   .object({
-    id: z.string().min(1),
+    id: IdSchema,
     title: requiredText("Title"),
     lang: z
       .string()

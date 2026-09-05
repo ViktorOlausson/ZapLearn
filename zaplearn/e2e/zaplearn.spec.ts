@@ -337,6 +337,15 @@ test("works when the persistent-storage API is unavailable", async ({
     .getByRole("link", { name: "Manage decks" })
     .click();
   await expect(page.getByText("Persistence API unavailable")).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Unsupported API deck" }),
+  ).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Backup deck", exact: true }).click();
+  expect((await download).suggestedFilename()).toBe(
+    "unsupported-api-deck.json",
+  );
 });
 
 test("main views do not overflow a 375px viewport", async ({ page }) => {
@@ -430,9 +439,9 @@ test("long study cards grow without internal scrolling in light and dark themes"
       accent: styles.getPropertyValue("--accent").trim(),
     };
   });
-  expect(themeColors.primary).toBe("oklch(0.92 0 0)");
-  expect(themeColors.secondary).toBe("oklch(0.27 0 0)");
-  expect(themeColors.accent).toBe("oklch(0.27 0 0)");
+  expect(themeColors.primary).toMatch(/^oklch\((?:0\.92|92%) 0 0\)$/);
+  expect(themeColors.secondary).toMatch(/^oklch\((?:0\.27|27%) 0 0\)$/);
+  expect(themeColors.accent).toMatch(/^oklch\((?:0\.27|27%) 0 0\)$/);
   await page.screenshot({
     path: testInfo.outputPath("study-mobile-dark.png"),
     fullPage: true,
@@ -442,4 +451,81 @@ test("long study cards grow without internal scrolling in light and dark themes"
     path: testInfo.outputPath("study-desktop-dark.png"),
     fullPage: true,
   });
+});
+
+test("imports hostile markup as text without creating HTML elements", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  await page.goto("/");
+  const question = '<img src=x onerror="window.injected=true">';
+  const answer = "<script>window.injected=true</script>";
+  await page
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "untrusted.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          title: "Untrusted text",
+          cards: [{ question, answer }],
+        }),
+      ),
+    });
+  await page.getByRole("link", { name: "Study", exact: true }).first().click();
+  await expect(page.getByText(question, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await expect(page.getByText(answer, { exact: true })).toBeVisible();
+  await expect(page.locator('img[src="x"]')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => Reflect.get(window, "injected")),
+  ).toBeUndefined();
+  expect(errors).toEqual([]);
+});
+
+test("requests storage after import, but does not repeat a denied request for later decks", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Reflect.set(window, "persistCalls", 0);
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: {
+        persisted: async () => false,
+        persist: async () => {
+          Reflect.set(
+            window,
+            "persistCalls",
+            Number(Reflect.get(window, "persistCalls")) + 1,
+          );
+          return false;
+        },
+      },
+    });
+  });
+  await page.goto("/");
+  expect(await page.evaluate(() => Reflect.get(window, "persistCalls"))).toBe(
+    0,
+  );
+  await page.locator('input[type="file"]').first().setInputFiles(fixture);
+  await expect(
+    page.getByRole("heading", { name: "ZapLearn Test Deck" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, "persistCalls")))
+    .toBe(1);
+  await page.getByRole("button", { name: "Create deck" }).first().click();
+  await page.getByLabel("Title").fill("Second deck");
+  await page.getByRole("button", { name: "Create and edit" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Second deck" }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, "persistCalls"))).toBe(
+    1,
+  );
 });
