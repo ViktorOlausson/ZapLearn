@@ -144,3 +144,40 @@ describe("deck import validation", () => {
     }
   });
 });
+
+describe("unsafe and conflicting imported IDs", () => {
+  it.each([
+    "__proto__",
+    "constructor",
+    "prototype",
+    "toString",
+    "hasOwnProperty",
+  ])("rejects reserved ID %s", (id) => {
+    expect(
+      parseDeckFile(
+        JSON.stringify({
+          id,
+          title: "Deck",
+          cards: [{ question: "Q", answer: "A" }],
+        }),
+      ).ok,
+    ).toBe(false);
+    expect(parseCard({ id, question: "Q", answer: "A" }).ok).toBe(false);
+  });
+  it("rejects duplicate generated and supplied card IDs", () => {
+    for (const cards of [
+      [
+        { question: "Q", answer: "A" },
+        { question: "Q", answer: "B" },
+      ],
+      [
+        { id: "same", question: "Q1", answer: "A" },
+        { id: "same", question: "Q2", answer: "B" },
+      ],
+    ]) {
+      expect(parseDeckFile(JSON.stringify({ title: "Deck", cards })).ok).toBe(
+        false,
+      );
+    }
+  });
+});

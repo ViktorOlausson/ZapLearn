@@ -10,6 +10,7 @@ import {
 
 const decks = localforage.createInstance({
   name: "zaplearn",
+  driver: localforage.INDEXEDDB,
   storeName: "decks",
 });
 

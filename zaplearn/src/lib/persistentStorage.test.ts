@@ -39,3 +39,31 @@ describe("persistent browser storage", () => {
     await expect(requestPersistentStorage()).resolves.toBe("persistent");
   });
 });
+
+describe("persistence failures", () => {
+  it("continues with best-effort storage after denial", async () => {
+    setStorage({ persisted: async () => false, persist: async () => false });
+    await expect(requestPersistentStorage()).resolves.toBe("best-effort");
+  });
+
+  it("does not claim the API is unsupported when status checking fails", async () => {
+    setStorage({
+      persisted: async () => {
+        throw new Error("Unavailable");
+      },
+      persist: async () => true,
+    });
+    await expect(getPersistentStorageStatus()).resolves.toBe("unknown");
+    await expect(requestPersistentStorage()).resolves.toBe("persistent");
+  });
+
+  it("handles rejected requests without rejecting the caller", async () => {
+    setStorage({
+      persisted: async () => false,
+      persist: async () => {
+        throw new Error("Denied");
+      },
+    });
+    await expect(requestPersistentStorage()).resolves.toBe("best-effort");
+  });
+});

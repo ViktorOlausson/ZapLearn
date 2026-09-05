@@ -21,3 +21,21 @@ test("manifest and service worker provide an offline app shell", async ({
   await expect(page.getByRole("status")).toContainText("Offline");
   await context.setOffline(false);
 });
+
+test("production responses carry restrictive security headers", async ({
+  request,
+}) => {
+  for (const url of ["/", "/manage", "/runtime/config.json"]) {
+    const response = await request.get(url);
+    expect(response.ok()).toBe(true);
+    const headers = response.headers();
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["permissions-policy"]).toContain("camera=()");
+    const csp = headers["content-security-policy"];
+    expect(csp).toContain("script-src 'self';");
+    expect(csp).toContain("object-src 'none';");
+    expect(csp).toContain("connect-src 'self';");
+    expect(csp).not.toContain("'unsafe-eval'");
+  }
+});

@@ -58,6 +58,7 @@ const storageLabels = {
   persistent: "Persistent storage granted",
   "best-effort": "Best-effort browser storage",
   unsupported: "Persistence API unavailable",
+  unknown: "Storage persistence status unavailable",
 } as const;
 
 export function Manage() {
@@ -327,26 +328,30 @@ export function Manage() {
             <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
               Create a deck or import JSON, then reveal traditional flashcards
               or answer multiple-choice questions. Your decks, edits, and
-              progress are saved locally in this browser—there is currently no
-              account or cloud sync.
+              progress are saved locally in this browser on this device—there is
+              currently no account or cloud sync.
             </p>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Export important decks as JSON for backup or transfer. Clearing
-              this browser’s site data may remove locally saved decks and study
-              history.
+              Use Backup deck to export JSON for backup or transfer. Backup +
+              progress also archives study history, but progress cannot
+              currently be restored through Import JSON. Clearing this browser’s
+              site data may remove locally saved decks and study history.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <Badge variant="secondary" role="status">
                 <Database aria-hidden="true" /> {storageLabels[storageStatus]}
               </Badge>
-              {storageStatus === "best-effort" && (
+              {(storageStatus === "best-effort" ||
+                storageStatus === "unknown") && (
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={requestingStorage}
                   onClick={() => void requestStorage()}
                 >
-                  {requestingStorage ? "Requesting…" : "Protect local storage"}
+                  {requestingStorage
+                    ? "Requesting…"
+                    : "Request persistent storage"}
                 </Button>
               )}
             </div>

@@ -9,6 +9,7 @@ import {
 
 const progress = localforage.createInstance({
   name: "zaplearn",
+  driver: localforage.INDEXEDDB,
   storeName: "progress",
 });
 
@@ -75,7 +76,8 @@ export function migrateProgress(
 }
 
 export async function saveProgress(document: ProgressDocument): Promise<void> {
-  await progress.setItem(document.deckId, document);
+  const validated = ProgressDocumentSchema.parse(document);
+  await progress.setItem(validated.deckId, validated);
 }
 
 export async function resetProgress(deckId: string): Promise<void> {
