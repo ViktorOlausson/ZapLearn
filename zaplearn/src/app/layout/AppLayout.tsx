@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { to: "/", label: "Home" },
   { to: "/manage", label: "Manage decks" },
+  { to: "/about", label: "About" },
 ];
 
 export function AppLayout() {

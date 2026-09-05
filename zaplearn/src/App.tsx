@@ -15,6 +15,9 @@ const Edit = lazy(() =>
 const Manage = lazy(() =>
   import("@/pages/Manage").then((module) => ({ default: module.Manage })),
 );
+const About = lazy(() =>
+  import("@/pages/About").then((module) => ({ default: module.About })),
+);
 
 function Page({ children }: { children: ReactNode }) {
   return (
@@ -57,6 +60,14 @@ export function App() {
           element={
             <Page>
               <Manage />
+            </Page>
+          }
+        />
+        <Route
+          path="/about"
+          element={
+            <Page>
+              <About />
             </Page>
           }
         />
