@@ -2,6 +2,8 @@
 
 ZapLearn is a local-first flashcard app for creating, importing, editing, and studying decks without an account. It runs as a static website and saves your work in your browser.
 
+[Open ZapLearn — live demo](https://zaplearn.02viktorolausson.workers.dev/)
+
 ## Main features
 
 - Create decks and edit cards with automatic saving.
