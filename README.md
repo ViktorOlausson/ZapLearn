@@ -1,52 +1,43 @@
 # ZapLearn
 
-ZapLearn is a local-first flashcard and study application. Create or import decks, edit cards, study with a lightweight spaced-repetition schedule, and keep your progress in the browser without creating an account.
+ZapLearn is a local-first flashcard app for creating, importing, editing, and studying decks without an account. It runs as a static website and saves your work in your browser.
 
 ## Main features
 
-- Create decks directly in the application or import JSON files by picker or drag and drop.
-- Validate imported decks and generate stable IDs for cards that do not provide one.
-- Add, edit, duplicate, search, filter, and delete cards without editing raw JSON.
-- Study due and new cards with persistent correct/incorrect grading.
-- Answer multiple-choice cards with immediate feedback and shuffled options.
-- Browse every card without changing study progress.
-- Export a deck or download a backup bundle containing the deck and progress.
-- View new, learning, mastered, correct, incorrect, and due-card summaries.
-- Use keyboard controls, responsive layouts, and light, dark, or system themes.
-- Install the application as a PWA and use cached application assets offline.
-- Optionally load a read-only seed deck in a Docker deployment.
+- Create decks and edit cards with automatic saving.
+- Import validated JSON through the file picker or drag and drop.
+- Study traditional flashcards, multiple-choice questions, or mixed decks.
+- Track correct/incorrect answers with a simple spaced-repetition schedule.
+- Browse cards without changing progress; search and filter study material.
+- Manage, duplicate, export, reset, and delete decks.
+- Use keyboard controls, mobile layouts, and light/dark/system themes.
+- Install as a PWA and use the cached app offline after an initial online visit.
+- Optionally serve a read-only seed deck through the Docker configuration.
 
-## How ZapLearn works
+## Technology stack
 
-### Create or import a deck
+React 19, TypeScript, Vite, React Router, Tailwind CSS, Radix UI components, Zustand, React Hook Form, Framer Motion, Zod, and localForage. The PWA uses vite-plugin-pwa/Workbox. Checks use ESLint, TypeScript, Vitest, React Testing Library, and Playwright.
 
-Select **Create deck** to start with an empty deck, or **Import JSON** to select or drop a JSON file. Imports are parsed as data and validated before anything is saved. Deck and card IDs from the file are preserved. ZapLearn generates a stable card ID from the question and category when an imported card has no ID.
+## Local storage and backups
 
-### Edit cards
+Decks, edits, settings, and study progress are stored in IndexedDB through localForage, in the `zaplearn` database. Existing database and object-store names are preserved. Data normally survives reloads and browser restarts in the same profile, browser, device, and website origin. Changing the host, protocol, or port opens a different storage area.
 
-The editor automatically saves changes after a short delay. Cards have a required question and answer, plus optional category, tags, and Easy/Medium/Hard difficulty fields. Deck title and language can also be changed.
+There is currently **no account or cloud sync system**, server database, or automatic cross-device transfer. IndexedDB must be available; a failed save is reported instead of silently using localStorage for decks or progress.
 
-### Study or browse
+After a successful first deck creation or import into an empty library, ZapLearn requests persistent browser storage when supported. It only checks status at startup; it does not request permission on page load. Manage decks displays whether persistence was granted, remains best-effort, is unsupported, or cannot be checked. A user can manually retry the request. A denial or unavailable API does not prevent IndexedDB use.
 
-Study mode supports traditional flashcards, multiple-choice questions, and mixed decks. Traditional cards show the question first: click or tap the card, or press **Space** or **Enter**, to reveal the answer, then mark it **Incorrect** or **Correct**. Multiple-choice cards show shuffled answer buttons and give immediate written feedback before you continue. The study-format selector can also present every card as a traditional flashcard or limit a session to multiple-choice cards. Browse mode allows free navigation without recording grades.
+Persistent storage can reduce automatic eviction, but **browser storage is not a guaranteed backup**. Clearing site data, deleting a browser profile, private-browsing cleanup, or losing a device can remove decks and progress. Use HTTPS in production for browser features such as persistence and service workers; localhost supports local testing. See [StorageManager.persist documentation](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist).
 
-ZapLearn uses a simple three-stage schedule: new, learning, and mastered. A correct new card is scheduled for roughly one hour later, the next correct answer for roughly one day later, and later correct answers receive longer intervals. An incorrect card receives a short retry interval. This is a lightweight scheduler, not a claim of an optimal learning algorithm.
-
-## Local data and backups
-
-Decks, edits, settings, and per-card study progress are stored in IndexedDB through localForage. Data normally survives refreshes and browser restarts on the same browser profile and device.
-
-There is currently no account, server database, or cloud synchronization. Data does not automatically move between browsers or devices. Clearing site data, deleting a browser profile, private-browsing cleanup, device loss, or browser storage policies may remove local data.
-
-After a user successfully creates or imports their first deck, ZapLearn requests persistent storage through `navigator.storage.persist()` when the API is available. The Manage Decks page reports whether persistent storage was granted. A grant reduces the chance of automatic browser eviction, but it does not protect against manually clearing data and is not a backup.
-
-Use **Backup deck** on the Manage Decks page to download re-importable JSON. **Backup + progress** includes the progress document in the downloaded bundle. The current importer restores deck-only exports but does not yet restore progress from the wrapped progress bundle.
+**Recommended backup:** open **Manage decks → Backup deck** and keep the downloaded JSON somewhere safe. Use **Import JSON** to restore it or transfer it to another browser/device. **Backup + progress** archives both documents, but the wrapped bundle cannot currently be restored by Import JSON. To recover its deck, save the bundle's `deck` object as a separate JSON file; progress restoration is not implemented. No export is automatically uploaded.
 
 ## Importing and exporting decks
 
-Imports must be JSON files no larger than 2 MB. ZapLearn checks file content rather than relying only on the browser-reported MIME type. A valid deck requires a title and at least one card. Every card requires a question and answer.
+1. Select **Import JSON**, or drop a `.json` file on the import area.
+2. ZapLearn checks the actual content with JSON parsing and Zod before saving. A `.json` extension or JSON MIME type is a picker hint, not proof that content is safe.
+3. Files and downloaded seed responses are limited to **2 MiB (2,097,152 bytes)**, shown as 2 MB in the UI. Invalid imports show validation errors.
+4. Export any deck from **Manage decks → Backup deck**. Exports preserve card IDs, types, and multiple-choice options.
 
-Expected format:
+Expected JSON deck format:
 
 ```json
 {
@@ -64,42 +55,22 @@ Expected format:
 }
 ```
 
-`lang`, `category`, `tags`, and `difficulty` are optional. Difficulty must be `1`, `2`, or `3`. Deck and card IDs are also optional during import. Ready-to-import fixtures are available for [traditional flashcards](zaplearn/fixtures/example-deck.json), [multiple-choice questions](zaplearn/fixtures/multiple-choice-deck.json), and a [mixed deck](zaplearn/fixtures/mixed-deck.json).
+`title` is required and `cards` must be a non-empty array. Each card requires non-empty `question` and `answer` strings. Optional fields include `lang` (such as `en` or `sv-SE`), `category`, `tags`, and `difficulty` (`1`, `2`, or `3`; defaults to `2`). Tags default to an empty array. Unrecognized properties are stripped.
 
-When an imported deck has the same deck ID as an existing deck, ZapLearn offers to update it. Progress remains associated with cards whose IDs still match.
+Deck and card IDs are optional. Missing deck IDs are generated; missing card IDs are generated deterministically from question and category. Avoid duplicate questions within a category: cards must have distinct IDs. IDs that collide with object-prototype keys, such as `__proto__` or `constructor`, are rejected. An import matching an existing deck ID offers **Update**, preserving progress for matching card IDs.
 
-## Card types
-
-Cards without a `type` remain traditional flashcards, so existing decks continue to work.
-
-### Flashcard
-
-```json
-{
-  "question": "What does WBS stand for?",
-  "answer": "Work Breakdown Structure"
-}
-```
-
-The `type` property may be omitted or set to `"flashcard"`.
-
-### Multiple choice
+Cards without `type`, or with `"type": "flashcard"`, are traditional flashcards. Multiple-choice cards use:
 
 ```json
 {
   "type": "multiple-choice",
-  "question": "What does WBS stand for?",
-  "answer": "Work Breakdown Structure",
-  "options": [
-    "Work Breakdown Structure",
-    "Workflow Business System",
-    "Work Balance Schedule",
-    "Written Business Specification"
-  ]
+  "question": "Which protocol encrypts web traffic?",
+  "answer": "HTTPS",
+  "options": ["HTTP", "HTTPS", "FTP"]
 }
 ```
 
-For multiple-choice cards, `answer` is the one correct answer and `options` contains both the correct and incorrect answers. Provide 2–6 non-empty, unique options. The exact `answer` value must appear once and only once in `options`. A deck may freely mix both card types.
+Provide 2–6 non-empty unique options; the exact answer must appear once. A deck can mix both card types. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
 
 ## Creating flashcards with AI
 
@@ -282,70 +253,60 @@ Study material:
 [PASTE STUDY MATERIAL HERE]
 ```
 
-## Technology stack
-
-- React and TypeScript in strict mode
-- Vite and React Router
-- Tailwind CSS and shadcn-style Radix UI components
-- Zustand for application state
-- localForage/IndexedDB for durable browser data
-- Zod for runtime validation
-- React Hook Form for editing
-- Framer Motion for flashcard interaction
-- vite-plugin-pwa and Workbox
-- Vitest, React Testing Library, and Playwright
-- ESLint and Prettier
-
 ## Run locally
 
-Requirements: Node.js 20 or newer and npm.
+Use Node.js 22.12+ and npm (the included Docker build uses Node 20.19+).
 
 ```bash
 cd zaplearn
-npm install
+npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite.
+Open the URL printed by Vite. No backend, account setup, API keys, or environment secrets are required.
 
-## Tests and quality checks
+## Verification
+
+From `zaplearn`:
 
 ```bash
-cd zaplearn
 npm run lint
 npm run typecheck
 npm run test:run
-npm run test:e2e
 npm run build
+npm run test:e2e
 npm run test:pwa
 ```
 
-## Production build
+Playwright uses installed Chrome locally and bundled Chromium in CI. For CI, install it with `npx playwright install --with-deps chromium`. Set `ZAPLEARN_PRODUCTION=1` when running `npm run test:e2e` to test the built app with production headers rather than the Vite development server. In PowerShell use `$env:ZAPLEARN_PRODUCTION='1'` first; in a POSIX shell use `ZAPLEARN_PRODUCTION=1 npm run test:e2e`.
+
+Browser tests cover import/export/re-import, IndexedDB contents, edits and progress surviving reload, persistence request timing, unsupported APIs, hostile markup rendered as text, themes, mobile layouts, and offline loading.
+
+## Production build and static deployment
 
 ```bash
 cd zaplearn
 npm ci
 npm run build
+npm run preview
 ```
 
-The static production files are written to `zaplearn/dist`. Preview them locally with `npm run preview`.
+Build output is `zaplearn/dist`. Preview is for local inspection, not a production web server; it applies the common security headers from `public/_headers` so browser checks exercise the production CSP.
 
-## Static deployment
+Deploy the contents of `dist` to a static host or web server. Typical repository deployment settings:
 
-Deploy the contents of `zaplearn/dist` to a static host such as Cloudflare Pages, Netlify, Vercel, GitHub Pages, or a conventional web server.
+| Setting                    | Value                     |
+| -------------------------- | ------------------------- |
+| Application/root directory | `zaplearn`                |
+| Build command              | `npm ci && npm run build` |
+| Output directory           | `dist`                    |
+| Node version               | 22.12+                    |
 
-Typical settings when the Git repository root is selected:
-
-- Root/application directory: `zaplearn`
-- Build command: `npm ci && npm run build`
-- Output directory: `dist`
-- Node.js version: 20 or newer
-
-The host must serve `index.html` as the fallback for routes such as `/manage` and `/train/:deckId`. The included `_redirects` file configures this on hosts that support the Netlify-style format, and `_headers` provides the included security policy on compatible hosts. Configure equivalent rewrites and headers when the provider does not consume those files. GitHub Pages requires an SPA fallback approach and, for project-site subpaths, a matching Vite base-path configuration.
+Configure HTTPS and an SPA fallback to `index.html` for routes such as `/manage`, `/edit/:deckId`, and `/train/:deckId`. The included `_redirects` and `_headers` files support hosts that consume Netlify-style configuration. On other hosts, configure equivalent rewrites and response headers explicitly; copying those files alone does not apply the policy. Deploy at the origin root: project subpaths require changes to Vite base, router, manifest, icon, and runtime-config paths.
 
 ## Docker
 
-The repository includes a multi-stage Node/Nginx image with an SPA fallback and production security headers.
+The existing multi-stage Dockerfile builds the Vite app and serves it with Nginx, SPA routing, and security headers.
 
 From the repository root:
 
@@ -354,43 +315,41 @@ docker build -t zaplearn ./zaplearn
 docker run --rm -p 8080:80 zaplearn
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. For public hosting, terminate HTTPS at your reverse proxy or hosting platform.
 
-To expose a read-only seed deck, mount a directory and set `DECK_URL` to a same-origin public path:
+To provide a public, read-only seed deck:
 
 ```bash
-docker run --rm -p 8080:80 \
-  -e DECK_URL=/data/example-deck.json \
-  -v ./zaplearn/fixtures:/usr/share/nginx/html/data:ro \
-  zaplearn
+docker run --rm -p 8080:80 -e DECK_URL=/data/example-deck.json -v ./zaplearn/fixtures:/usr/share/nginx/html/data:ro zaplearn
 ```
 
-The container generates `/runtime/config.json` at startup. A missing or invalid seed deck does not prevent locally stored decks from working.
+The container writes `/runtime/config.json` at startup. Keep seed URLs same-origin for the included CSP. Missing or invalid seed data does not prevent local decks from working. Mounted seed files are public to visitors; do not put private files or credentials in that directory. User decks remain in each visitor's browser, not in the container filesystem.
 
 ## Privacy and security
 
-- ZapLearn treats imported files and seed decks as untrusted data.
-- JSON is parsed and validated with Zod before persistence.
-- Unexpected object properties are stripped during validation.
-- Imported card content is rendered as normal React text, not executable JavaScript or raw HTML.
-- The application does not use `eval`, `new Function`, or HTML injection APIs.
-- File and URL-loaded deck responses are limited to 2 MB.
-- URL-loaded decks accept only HTTP or HTTPS and still pass through the same validation.
-- ZapLearn does not store application secrets, access tokens, or credentials in browser storage.
-- The Nginx and compatible static-host configurations include a restrictive Content Security Policy, MIME sniffing protection, referrer controls, browser-feature restrictions, and framing restrictions.
-- The CSP permits inline style attributes because React animation and positioning components require them; inline scripts and dynamic code execution remain blocked.
-- Hosting platforms that ignore `_headers` must be configured separately to send equivalent headers.
+- Imported JSON and URL-loaded seeds are data only: the app does not execute them with `eval`, `new Function`, or script injection.
+- Card text is rendered as ordinary React text. There is no Markdown or HTML renderer, so imported markup is displayed literally and DOMPurify is not needed. Any future HTML/Markdown rendering must sanitize output with DOMPurify before insertion.
+- Zod validates deck imports and stored deck/progress writes. Schemas strip unexpected properties; imported objects are not recursively merged into app configuration. Reserved IDs are rejected before they can become unsafe record keys.
+- File size is checked before reading; remote bodies are also bounded while streaming, even when Content-Length is missing or misleading. URL decks allow only HTTP(S), use the same JSON validation, and cannot insert scripts. The production CSP limits connections to the app's own origin.
+- No application secrets, tokens, or credentials are stored in IndexedDB/localStorage. Browser data and exported JSON are not application-encrypted; anyone with access to the browser profile or backup files may read them.
+- Decks and progress are not uploaded. The host receives ordinary asset/configuration requests and may log connection metadata. Optional seed requests are network requests. Pasting source material into an external AI tool is governed by that tool's policies.
+- There are currently no `target="_blank"` links. Future external new-tab links should use `rel="noopener noreferrer"`.
+- Nginx and compatible static hosts send `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, framing controls, and Content Security Policy. Nginx runtime-config responses retain these headers alongside their no-store policy; see [Nginx header inheritance](https://nginx.org/en/docs/http/ngx_http_headers_module.html).
+- CSP restricts scripts, workers, network access, and assets to the origin and blocks plugins/frames. Inline scripts and dynamic evaluation remain blocked. Inline styles are allowed for Sonner/Radix component styles and React animation/positioning; this exception does not permit imported HTML or JavaScript. Theme changes use the existing settings store without an inline bootstrap script.
 
-ZapLearn controls its application behavior, but the privacy and security practices of a chosen hosting provider are governed by that provider.
+These are practical frontend protections, not a guarantee of security. Keep dependencies and hosting software updated and review changes before deployment.
 
 ## Current limitations
 
-- No accounts, cloud synchronization, collaborative editing, or cross-device progress.
-- Browser storage can still be cleared even when persistent storage is granted.
-- Progress bundles can be exported but are not yet restored by the importer.
-- The scheduler is a simple three-stage system rather than SM-2 or another advanced algorithm.
-- JSON is the only supported import format; CSV and Anki packages are not supported.
-- Seed-deck URLs in the included restrictive production policy are expected to be same-origin.
+- No accounts, cloud sync, collaboration, or automatic backup.
+- Persistence is browser-controlled and never protects against clearing site data.
+- Progress bundles can be exported but cannot yet be restored through the importer.
+- Imported decks require at least one card; add a card to an empty local deck before exporting it for re-import.
+- Locally edited decks can grow beyond the 2 MiB import limit; split very large decks before using exports for transfer.
+- JSON is the only import format; CSV and Anki packages are unsupported.
+- Scheduling uses simple new/learning/mastered stages, not an advanced learning model.
+- Offline use requires an initial successful online visit; API behavior and storage quotas vary by browser.
+- The supplied production policy expects same-origin seed URLs and deployment at the origin root.
 
 ## AI development transparency
 
@@ -398,4 +357,4 @@ ZapLearn controls its application behavior, but the privacy and security practic
 
 ## License
 
-Copyright 2026 Viktor Olausson. ZapLearn is source-available for non-commercial use under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use, resale, or offering ZapLearn as a paid product or service requires a separate written license from Viktor Olausson.
+Copyright 2026 Viktor Olausson. See [LICENSE.md](LICENSE.md) for the project's PolyForm Noncommercial License 1.0.0 and commercial-use terms. Third-party dependencies retain their respective licenses.

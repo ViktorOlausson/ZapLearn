@@ -1,5 +1,4 @@
 import { Check, Moon, Sun, SunMoon } from "lucide-react";
-import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -25,13 +24,11 @@ const options: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
 export function ThemeToggle() {
   const preference = useSettingsStore((state) => state.theme);
   const saveTheme = useSettingsStore((state) => state.setTheme);
-  const { setTheme } = useTheme();
   const active =
     options.find((option) => option.value === preference) ?? options[0];
   const Icon = active.icon;
 
   function chooseTheme(theme: ThemePreference) {
-    setTheme(theme);
     void saveTheme(theme);
   }
 

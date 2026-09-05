@@ -156,3 +156,22 @@ describe("file deck import", () => {
     if (!invalid.ok) expect(invalid.errors[0]).toContain("Could not read JSON");
   });
 });
+
+it("checks JSON content despite a trusted-looking MIME type", async () => {
+  const result = await readDeckFile(
+    new File(["<script>alert(1)</script>"], "deck.json", {
+      type: "application/json",
+    }),
+  );
+  expect(result.ok).toBe(false);
+});
+
+it("accepts valid JSON when the browser supplies no MIME type", async () => {
+  const result = await readDeckFile(
+    new File(
+      ['{"title":"Deck","cards":[{"question":"Q","answer":"A"}]}'],
+      "deck.json",
+    ),
+  );
+  expect(result.ok).toBe(true);
+});
