@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { testImage } from "./testImages";
 
 test("manifest and service worker provide an offline app shell", async ({
   page,
@@ -22,6 +23,48 @@ test("manifest and service worker provide an offline app shell", async ({
   await context.setOffline(false);
 });
 
+test("uploaded pictures remain available offline after reload", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+  });
+  const png = await testImage(page);
+  await page.getByRole("button", { name: "Create deck" }).first().click();
+  await page.getByLabel("Title", { exact: true }).fill("Offline local images");
+  await page.getByRole("button", { name: "Create and edit" }).click();
+  await page.getByRole("button", { name: "Create from images" }).click();
+  await page.getByLabel("Upload images", { exact: true }).setInputFiles(png);
+  await page.getByLabel("Question", { exact: true }).fill("What shape?");
+  await page.getByLabel("Answer", { exact: true }).fill("Circle");
+  await page
+    .getByLabel("Alternative text")
+    .fill("Blue circle on a pale background");
+  await page.getByRole("button", { name: "Add cards to deck" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Image Card Builder" }),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "Study deck" }).click();
+  await expect(
+    page.getByRole("img", { name: "Blue circle on a pale background" }),
+  ).toBeVisible();
+  await context.setOffline(true);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const image = page.getByRole("img", {
+    name: "Blue circle on a pale background",
+  });
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBe(160);
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await page.getByRole("button", { name: "Correct", exact: true }).click();
+  await expect(page.getByText("Session complete")).toBeVisible();
+  await context.setOffline(false);
+});
+
 test("production responses carry restrictive security headers", async ({
   request,
 }) => {
@@ -36,7 +79,7 @@ test("production responses carry restrictive security headers", async ({
     expect(csp).toContain("script-src 'self';");
     expect(csp).toContain("object-src 'none';");
     expect(csp).toContain("connect-src 'self';");
-    expect(csp).toContain("img-src 'self' data: https:;");
+    expect(csp).toContain("img-src 'self' data: https: blob:;");
     expect(csp).not.toContain("*");
     expect(csp).not.toContain("'unsafe-eval'");
   }

@@ -1,4 +1,5 @@
 import { createId } from "@/lib/hash";
+import { localImageIds } from "@/features/images/imageRepo";
 import {
   parseDeckFile,
   SCHEMA_VERSION,
@@ -107,7 +108,15 @@ export async function readDeckFile(file: File) {
     };
   }
   try {
-    return parseDeckFile(await file.text());
+    const parsed = parseDeckFile(await file.text());
+    if (parsed.ok && localImageIds(parsed.deck.cards).size)
+      return {
+        ok: false as const,
+        errors: [
+          "Local images require a .zaplearn.zip package. Import the package exported with images.",
+        ],
+      };
+    return parsed;
   } catch {
     return {
       ok: false as const,
@@ -145,6 +154,13 @@ export async function fetchDeckFromUrl(url: string, etag?: string) {
     const body = await readResponseTextWithLimit(response);
     if (!body.ok) return body;
     const parsed = parseDeckFile(body.text);
+    if (parsed.ok && localImageIds(parsed.deck.cards).size)
+      return {
+        ok: false as const,
+        errors: [
+          "URL decks cannot reference local image assets. Import an image package instead.",
+        ],
+      };
     return parsed.ok
       ? {
           ok: true as const,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check, Copy, Plus, Search, Trash2, X } from "lucide-react";
@@ -17,6 +17,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createId } from "@/lib/hash";
 import { CardImageEditor } from "@/features/decks/components/CardImageEditor";
+import { ImageDraftContext } from "@/features/images/ImageDraftContext";
+import {
+  createImageDraftSession,
+  localImageIds,
+} from "@/features/images/imageRepo";
+import { IMAGE_ACCEPT, validateImageFile } from "@/features/images/imageFiles";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import {
   DifficultySchema,
@@ -133,10 +139,24 @@ function fieldErrorMessage(value: unknown): string | undefined {
 export function DeckEditor({
   deck,
   onSave,
+  batch = false,
 }: {
   deck: Deck;
   onSave: (values: EditorValues) => Promise<void>;
+  batch?: boolean;
 }) {
+  const [imageSession] = useState(createImageDraftSession);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const uploadRequest = useRef(0);
+  useEffect(
+    () => () => {
+      uploadRequest.current++;
+      imageSession.release();
+    },
+    [imageSession],
+  );
   const [saveState, setSaveState] = useState<
     "saved" | "saving" | "invalid" | "error"
   >("saved");
@@ -152,12 +172,15 @@ export function DeckEditor({
     },
   });
   const { control, register, handleSubmit, formState, reset } = form;
-  const { fields, append, insert, remove } = useFieldArray({
+  const { fields, append, insert, remove, move } = useFieldArray({
     control,
     name: "cards",
     keyName: "fieldId",
   });
   const values = useWatch({ control });
+  useEffect(() => {
+    imageSession.retain(localImageIds(form.getValues("cards")));
+  }, [imageSession, form, values]);
   const filteredIndexes = useMemo(
     () =>
       fields.flatMap((field, index) =>
@@ -172,12 +195,15 @@ export function DeckEditor({
   );
 
   const persist = useCallback(async () => {
+    const snapshot = JSON.stringify(form.getValues());
     setSaveState("saving");
     await handleSubmit(
       async (valid) => {
         try {
           await onSave(valid);
-          reset(valid);
+          // Preserve input nodes/focus while autosaving. Do not overwrite edits made during an async save.
+          if (JSON.stringify(form.getValues()) === snapshot)
+            reset(valid, { keepValues: true });
           setSaveState("saved");
         } catch {
           setSaveState("error");
@@ -185,7 +211,7 @@ export function DeckEditor({
       },
       () => setSaveState("invalid"),
     )();
-  }, [handleSubmit, onSave, reset]);
+  }, [handleSubmit, onSave, reset, form]);
 
   function changeCardType(
     index: number,
@@ -258,461 +284,649 @@ export function DeckEditor({
   }
 
   useEffect(() => {
-    if (!formState.isDirty) return;
+    if (batch || !formState.isDirty) return;
     setSaveState("saving");
     const timer = window.setTimeout(() => void persist(), 400);
     return () => window.clearTimeout(timer);
-  }, [formState.isDirty, persist, values]);
+  }, [batch, formState.isDirty, persist, values]);
+
+  async function uploadBatch(files: FileList | null) {
+    if (!files?.length) return;
+    const token = ++uploadRequest.current;
+    setUploading(true);
+    setUploadError("");
+    const errors: string[] = [];
+    const uploads: Blob[] = [];
+    if (files.length + fields.length > 50) {
+      setUploadError("Choose at most 50 images per batch.");
+      setUploading(false);
+      return;
+    }
+    for (const file of Array.from(files)) {
+      try {
+        const blob = await validateImageFile(file);
+        if (token !== uploadRequest.current) return;
+        uploads.push(blob);
+      } catch (error) {
+        errors.push(
+          `${file.name}: ${error instanceof Error ? error.message : "Could not read image."}`,
+        );
+      }
+    }
+    if (token !== uploadRequest.current) return;
+    // Stage and attach together; editing existing drafts during decoding must
+    // not prune a pending image that has not yet been attached to a card.
+    append(
+      uploads.map((blob) => ({
+        ...emptyCard(),
+        questionImage: {
+          type: "local" as const,
+          assetId: imageSession.stage(blob),
+          alt: "",
+        },
+      })),
+    );
+    setUploading(false);
+    setUploadError(errors.join(" "));
+  }
+
+  if (showBuilder)
+    return (
+      <section className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setShowBuilder(false)}
+        >
+          Cancel image builder
+        </Button>
+        <h2 className="text-xl font-semibold">Image Card Builder</h2>
+        <p className="text-sm text-muted-foreground">
+          Select images to create one draft per image. Fill in each question,
+          answer and alternative text. Move images between question and answer
+          sides as needed.
+        </p>
+        <DeckEditor
+          batch
+          deck={{ ...deck, title: "New image cards", cards: [] }}
+          onSave={async (added) => {
+            if (!added.cards.length)
+              throw new Error("Add at least one image card.");
+            const combined = EditorSchema.parse({
+              ...form.getValues(),
+              cards: [...form.getValues("cards"), ...added.cards],
+            });
+            await onSave(combined);
+            reset(combined);
+            setShowBuilder(false);
+            setSaveState("saved");
+          }}
+        />
+      </section>
+    );
 
   return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        void persist();
-      }}
-      onBlur={(event) => {
-        if (
-          formState.isDirty &&
-          !event.currentTarget.contains(event.relatedTarget)
-        )
+    <ImageDraftContext.Provider value={imageSession}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
           void persist();
-      }}
-      className="space-y-7"
-    >
-      <div className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-start">
-        <div className="grid gap-1.5">
-          <label htmlFor="deck-title" className="text-sm font-medium">
-            Deck title
-          </label>
-          <Input
-            id="deck-title"
-            {...register("title")}
-            aria-invalid={Boolean(formState.errors.title)}
-          />
-          <p className="text-sm text-destructive">
-            {formState.errors.title?.message}
-          </p>
-        </div>
-        <div className="grid gap-1.5">
-          <label htmlFor="deck-language" className="text-sm font-medium">
-            Language
-          </label>
-          <Input id="deck-language" placeholder="sv" {...register("lang")} />
-          <p className="text-sm text-destructive">
-            {formState.errors.lang?.message}
-          </p>
-        </div>
-        <span
-          data-testid="save-status"
-          className="mt-8 inline-flex min-w-24 justify-end text-sm text-muted-foreground"
-          aria-live="polite"
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "invalid"
-              ? "Fix validation errors"
-              : saveState === "error"
-                ? "Unable to save"
-                : "Saved"}
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-7">
-        <div>
-          <h2 className="text-xl font-semibold">Cards</h2>
-          <p className="text-sm text-muted-foreground">
-            Changes are automatically saved.
-          </p>
-        </div>
-        <Button type="button" onClick={() => append(emptyCard())}>
-          <Plus /> Add card
-        </Button>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search question, answer, category, or tags"
-            aria-label="Search cards"
-          />
-        </div>
-        <Select value={difficulty} onValueChange={setDifficulty}>
-          <SelectTrigger className="w-full" aria-label="Filter by difficulty">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All difficulties</SelectItem>
-            <SelectItem value="1">Easy</SelectItem>
-            <SelectItem value="2">Medium</SelectItem>
-            <SelectItem value="3">Hard</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {fields.length === 0 ? (
-        <div className="rounded-2xl border border-dashed bg-card/50 px-5 py-12 text-center">
-          <h3 className="font-semibold">This deck has no cards</h3>
-          <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-            Add a question and answer before starting a study session.
-          </p>
-          <Button
-            className="mt-5"
-            type="button"
-            onClick={() => append(emptyCard())}
+        }}
+        onBlur={(event) => {
+          if (
+            !batch &&
+            formState.isDirty &&
+            !event.currentTarget.contains(event.relatedTarget)
+          )
+            void persist();
+        }}
+        className="space-y-7"
+      >
+        {batch && (
+          <div
+            className="rounded-xl border-2 border-dashed p-4"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              void uploadBatch(event.dataTransfer.files);
+            }}
           >
-            <Plus /> Add first card
+            <label className="block text-sm font-medium" htmlFor="batch-images">
+              Upload images
+            </label>
+            <input
+              id="batch-images"
+              type="file"
+              accept={IMAGE_ACCEPT}
+              multiple
+              disabled={uploading}
+              className="mt-2 block max-w-full"
+              onChange={(event) => {
+                void uploadBatch(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+            <p className="mt-2 text-sm text-muted-foreground">
+              Drop files here or select up to 50 images. 5 MB per image.{" "}
+              {fields.length} draft cards.
+            </p>
+            {uploading && <p role="status">Reading images…</p>}
+            {uploadError && (
+              <p role="alert" className="text-sm text-destructive">
+                {uploadError}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-start">
+          <div className="grid gap-1.5">
+            <label htmlFor="deck-title" className="text-sm font-medium">
+              Deck title
+            </label>
+            <Input
+              id="deck-title"
+              {...register("title")}
+              aria-invalid={Boolean(formState.errors.title)}
+            />
+            <p className="text-sm text-destructive">
+              {formState.errors.title?.message}
+            </p>
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor="deck-language" className="text-sm font-medium">
+              Language
+            </label>
+            <Input id="deck-language" placeholder="sv" {...register("lang")} />
+            <p className="text-sm text-destructive">
+              {formState.errors.lang?.message}
+            </p>
+          </div>
+          <span
+            data-testid="save-status"
+            className="mt-8 inline-flex min-w-24 justify-end text-sm text-muted-foreground"
+            aria-live="polite"
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "invalid"
+                ? "Fix validation errors"
+                : saveState === "error"
+                  ? "Unable to save"
+                  : "Saved"}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-7">
+          <div>
+            <h2 className="text-xl font-semibold">Cards</h2>
+            <p className="text-sm text-muted-foreground">
+              {batch
+                ? "Complete every draft before adding the cards to your deck."
+                : "Changes are automatically saved."}
+            </p>
+          </div>
+          {!batch && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowBuilder(true)}
+            >
+              Create from images
+            </Button>
+          )}
+          <Button type="button" onClick={() => append(emptyCard())}>
+            <Plus /> Add card
           </Button>
         </div>
-      ) : filteredIndexes.length === 0 ? (
-        <p className="rounded-xl border border-dashed py-10 text-center text-muted-foreground">
-          No cards match these filters.
-        </p>
-      ) : (
-        <div className="space-y-4">
-          {filteredIndexes.map((index) => (
-            <article
-              className="rounded-xl border p-4"
-              key={fields[index].fieldId}
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search question, answer, category, or tags"
+              aria-label="Search cards"
+            />
+          </div>
+          <Select value={difficulty} onValueChange={setDifficulty}>
+            <SelectTrigger className="w-full" aria-label="Filter by difficulty">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All difficulties</SelectItem>
+              <SelectItem value="1">Easy</SelectItem>
+              <SelectItem value="2">Medium</SelectItem>
+              <SelectItem value="3">Hard</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {fields.length === 0 ? (
+          <div className="rounded-2xl border border-dashed bg-card/50 px-5 py-12 text-center">
+            <h3 className="font-semibold">This deck has no cards</h3>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+              Add a question and answer before starting a study session.
+            </p>
+            <Button
+              className="mt-5"
+              type="button"
+              onClick={() => append(emptyCard())}
             >
-              {(() => {
-                const draft = (values.cards?.[index] ?? fields[index]) as
-                  | Partial<Card>
-                  | (Partial<MultipleChoiceCard> & { options?: string[] });
-                const cardType =
-                  draft.type === "multiple-choice"
-                    ? "multiple-choice"
-                    : "flashcard";
-                const options =
-                  cardType === "multiple-choice" && "options" in draft
-                    ? (draft.options ?? [])
-                    : [];
-                const cardErrors = formState.errors.cards?.[index];
-                const optionsError =
-                  cardErrors && "options" in cardErrors
-                    ? fieldErrorMessage(cardErrors.options)
-                    : undefined;
-                return (
-                  <>
-                    <div className="mb-3 flex items-center justify-between">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge variant="secondary">Card {index + 1}</Badge>
-                        {cardType === "multiple-choice" && (
-                          <Badge variant="outline">Multiple choice</Badge>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() =>
-                            insert(index + 1, {
-                              questionImage: form.getValues(
-                                `cards.${index}.questionImage`,
-                              ),
-                              answerImage: form.getValues(
-                                `cards.${index}.answerImage`,
-                              ),
-                              id: createId("card"),
-                              question:
-                                values.cards?.[index]?.question ??
-                                fields[index].question,
-                              answer:
-                                values.cards?.[index]?.answer ??
-                                fields[index].answer,
-                              category:
-                                values.cards?.[index]?.category ??
-                                fields[index].category,
-                              tags:
-                                values.cards?.[index]?.tags ??
-                                fields[index].tags,
-                              difficulty:
-                                values.cards?.[index]?.difficulty ??
-                                fields[index].difficulty,
-                              ...(cardType === "multiple-choice"
-                                ? {
-                                    type: "multiple-choice" as const,
-                                    options,
-                                  }
-                                : { type: "flashcard" as const }),
-                            })
-                          }
-                          aria-label={`Duplicate card ${index + 1}`}
-                          title="Duplicate card"
-                        >
-                          <Copy />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(index)}
-                          aria-label={`Delete card ${index + 1}`}
-                          title="Delete card"
-                        >
-                          <Trash2 className="text-destructive" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="grid gap-3">
-                      <div className="max-w-xs">
-                        <label className="text-sm font-medium">Card type</label>
-                        <Select
-                          value={cardType}
-                          onValueChange={(value) =>
-                            changeCardType(
-                              index,
-                              value as "flashcard" | "multiple-choice",
-                            )
-                          }
-                        >
-                          <SelectTrigger
-                            className="w-full"
-                            aria-label={`Card ${index + 1} type`}
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="flashcard">Flashcard</SelectItem>
-                            <SelectItem value="multiple-choice">
-                              Multiple choice
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label
-                          className="text-sm font-medium"
-                          htmlFor={`question-${index}`}
-                        >
-                          Question
-                        </label>
-                        <Textarea
-                          id={`question-${index}`}
-                          {...register(`cards.${index}.question`)}
-                          aria-invalid={Boolean(
-                            formState.errors.cards?.[index]?.question,
+              <Plus /> Add first card
+            </Button>
+          </div>
+        ) : filteredIndexes.length === 0 ? (
+          <p className="rounded-xl border border-dashed py-10 text-center text-muted-foreground">
+            No cards match these filters.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {filteredIndexes.map((index) => (
+              <article
+                className="rounded-xl border p-4"
+                key={fields[index].fieldId}
+              >
+                {(() => {
+                  const draft = (values.cards?.[index] ?? fields[index]) as
+                    | Partial<Card>
+                    | (Partial<MultipleChoiceCard> & { options?: string[] });
+                  const cardType =
+                    draft.type === "multiple-choice"
+                      ? "multiple-choice"
+                      : "flashcard";
+                  const options =
+                    cardType === "multiple-choice" && "options" in draft
+                      ? (draft.options ?? [])
+                      : [];
+                  const cardErrors = formState.errors.cards?.[index];
+                  const optionsError =
+                    cardErrors && "options" in cardErrors
+                      ? fieldErrorMessage(cardErrors.options)
+                      : undefined;
+                  return (
+                    <>
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">Card {index + 1}</Badge>
+                          {cardType === "multiple-choice" && (
+                            <Badge variant="outline">Multiple choice</Badge>
                           )}
-                        />
-                        <p className="text-sm text-destructive">
-                          {formState.errors.cards?.[index]?.question?.message}
-                        </p>
+                        </div>
+                        <div className="flex gap-1">
+                          {batch && (
+                            <>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={index === 0}
+                                onClick={() => move(index, index - 1)}
+                                aria-label={`Move card ${index + 1} up`}
+                              >
+                                ↑
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={index === fields.length - 1}
+                                onClick={() => move(index, index + 1)}
+                                aria-label={`Move card ${index + 1} down`}
+                              >
+                                ↓
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() =>
+                              insert(index + 1, {
+                                questionImage: form.getValues(
+                                  `cards.${index}.questionImage`,
+                                ),
+                                answerImage: form.getValues(
+                                  `cards.${index}.answerImage`,
+                                ),
+                                id: createId("card"),
+                                question:
+                                  values.cards?.[index]?.question ??
+                                  fields[index].question,
+                                answer:
+                                  values.cards?.[index]?.answer ??
+                                  fields[index].answer,
+                                category:
+                                  values.cards?.[index]?.category ??
+                                  fields[index].category,
+                                tags:
+                                  values.cards?.[index]?.tags ??
+                                  fields[index].tags,
+                                difficulty:
+                                  values.cards?.[index]?.difficulty ??
+                                  fields[index].difficulty,
+                                ...(cardType === "multiple-choice"
+                                  ? {
+                                      type: "multiple-choice" as const,
+                                      options,
+                                    }
+                                  : { type: "flashcard" as const }),
+                              })
+                            }
+                            aria-label={`Duplicate card ${index + 1}`}
+                            title="Duplicate card"
+                          >
+                            <Copy />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => remove(index)}
+                            aria-label={`Delete card ${index + 1}`}
+                            title="Delete card"
+                          >
+                            <Trash2 className="text-destructive" />
+                          </Button>
+                        </div>
                       </div>
-                      {cardType === "flashcard" ? (
+                      <div className="grid gap-3">
+                        <div className="max-w-xs">
+                          <label className="text-sm font-medium">
+                            Card type
+                          </label>
+                          <Select
+                            value={cardType}
+                            onValueChange={(value) =>
+                              changeCardType(
+                                index,
+                                value as "flashcard" | "multiple-choice",
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              className="w-full"
+                              aria-label={`Card ${index + 1} type`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="flashcard">
+                                Flashcard
+                              </SelectItem>
+                              <SelectItem value="multiple-choice">
+                                Multiple choice
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div>
                           <label
                             className="text-sm font-medium"
-                            htmlFor={`answer-${index}`}
+                            htmlFor={`question-${index}`}
                           >
-                            Answer
+                            Question
                           </label>
                           <Textarea
-                            id={`answer-${index}`}
-                            {...register(`cards.${index}.answer`)}
+                            id={`question-${index}`}
+                            {...register(`cards.${index}.question`)}
                             aria-invalid={Boolean(
-                              formState.errors.cards?.[index]?.answer,
+                              formState.errors.cards?.[index]?.question,
                             )}
                           />
                           <p className="text-sm text-destructive">
-                            {formState.errors.cards?.[index]?.answer?.message}
+                            {formState.errors.cards?.[index]?.question?.message}
                           </p>
                         </div>
-                      ) : (
-                        <fieldset className="rounded-xl border bg-muted/20 p-4">
-                          <legend className="px-1 text-sm font-medium">
-                            Answer options
-                          </legend>
-                          <p className="mb-3 text-sm text-muted-foreground">
-                            Add 2–6 options and select the one correct answer.
+                        {cardType === "flashcard" ? (
+                          <div>
+                            <label
+                              className="text-sm font-medium"
+                              htmlFor={`answer-${index}`}
+                            >
+                              Answer
+                            </label>
+                            <Textarea
+                              id={`answer-${index}`}
+                              {...register(`cards.${index}.answer`)}
+                              aria-invalid={Boolean(
+                                formState.errors.cards?.[index]?.answer,
+                              )}
+                            />
+                            <p className="text-sm text-destructive">
+                              {formState.errors.cards?.[index]?.answer?.message}
+                            </p>
+                          </div>
+                        ) : (
+                          <fieldset className="rounded-xl border bg-muted/20 p-4">
+                            <legend className="px-1 text-sm font-medium">
+                              Answer options
+                            </legend>
+                            <p className="mb-3 text-sm text-muted-foreground">
+                              Add 2–6 options and select the one correct answer.
+                            </p>
+                            <div className="grid gap-2">
+                              {options.map((option, optionIndex) => (
+                                <div
+                                  className="flex min-w-0 items-center gap-2"
+                                  key={`${fields[index].fieldId}-option-${optionIndex}`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`correct-option-${fields[index].fieldId}`}
+                                    checked={
+                                      Boolean(option) && draft.answer === option
+                                    }
+                                    disabled={!option.trim()}
+                                    onChange={() =>
+                                      form.setValue(
+                                        `cards.${index}.answer`,
+                                        option,
+                                        {
+                                          shouldDirty: true,
+                                          shouldValidate: true,
+                                        },
+                                      )
+                                    }
+                                    aria-label={`Set option ${optionIndex + 1} as correct`}
+                                    className="size-4 shrink-0 accent-primary"
+                                  />
+                                  <Input
+                                    value={option}
+                                    onChange={(event) =>
+                                      updateOption(
+                                        index,
+                                        optionIndex,
+                                        event.target.value,
+                                      )
+                                    }
+                                    aria-label={`Option ${optionIndex + 1}`}
+                                    placeholder={`Answer option ${optionIndex + 1}`}
+                                    className="min-w-0"
+                                  />
+                                  {Boolean(option) &&
+                                    draft.answer === option && (
+                                      <Badge
+                                        className="hidden gap-1 sm:inline-flex"
+                                        variant="secondary"
+                                      >
+                                        <Check className="size-3" /> Correct
+                                      </Badge>
+                                    )}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() =>
+                                      removeOption(index, optionIndex)
+                                    }
+                                    aria-label={`Remove option ${optionIndex + 1}`}
+                                  >
+                                    <X />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="mt-3"
+                              disabled={options.length >= 6}
+                              onClick={() => addOption(index)}
+                            >
+                              <Plus /> Add option
+                            </Button>
+                            <p className="mt-2 text-sm text-destructive">
+                              {optionsError ??
+                                formState.errors.cards?.[index]?.answer
+                                  ?.message}
+                            </p>
+                          </fieldset>
+                        )}
+                        <details
+                          className="min-w-0 rounded-xl border p-4"
+                          open={Boolean(
+                            draft.questionImage || draft.answerImage,
+                          )}
+                        >
+                          <summary className="cursor-pointer text-sm font-medium">
+                            Images (optional)
+                          </summary>
+                          <p className="my-3 text-sm text-muted-foreground">
+                            Upload pictures from your device or use image URLs.
+                            Uploaded images work offline and are included in
+                            image package backups. External images contact their
+                            host and may be unavailable offline.
                           </p>
-                          <div className="grid gap-2">
-                            {options.map((option, optionIndex) => (
-                              <div
-                                className="flex min-w-0 items-center gap-2"
-                                key={`${fields[index].fieldId}-option-${optionIndex}`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={`correct-option-${fields[index].fieldId}`}
-                                  checked={
-                                    Boolean(option) && draft.answer === option
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {(["questionImage", "answerImage"] as const).map(
+                              (side) => (
+                                <CardImageEditor
+                                  key={side}
+                                  id={`${fields[index].fieldId}-${side}`}
+                                  label={
+                                    side === "questionImage"
+                                      ? "Question image"
+                                      : "Answer image"
                                   }
-                                  disabled={!option.trim()}
-                                  onChange={() =>
+                                  value={draft[side]}
+                                  onMove={() => {
+                                    const other =
+                                      side === "questionImage"
+                                        ? "answerImage"
+                                        : "questionImage";
+                                    const current = form.getValues(
+                                      `cards.${index}.${side}`,
+                                    );
+                                    const opposite = form.getValues(
+                                      `cards.${index}.${other}`,
+                                    );
                                     form.setValue(
-                                      `cards.${index}.answer`,
-                                      option,
+                                      `cards.${index}.${side}`,
+                                      opposite,
+                                      { shouldDirty: true },
+                                    );
+                                    form.setValue(
+                                      `cards.${index}.${other}`,
+                                      current,
+                                      {
+                                        shouldDirty: true,
+                                        shouldValidate: true,
+                                      },
+                                    );
+                                  }}
+                                  onChange={(image) =>
+                                    form.setValue(
+                                      `cards.${index}.${side}`,
+                                      image,
                                       {
                                         shouldDirty: true,
                                         shouldValidate: true,
                                       },
                                     )
                                   }
-                                  aria-label={`Set option ${optionIndex + 1} as correct`}
-                                  className="size-4 shrink-0 accent-primary"
                                 />
-                                <Input
-                                  value={option}
-                                  onChange={(event) =>
-                                    updateOption(
-                                      index,
-                                      optionIndex,
-                                      event.target.value,
-                                    )
-                                  }
-                                  aria-label={`Option ${optionIndex + 1}`}
-                                  placeholder={`Answer option ${optionIndex + 1}`}
-                                  className="min-w-0"
-                                />
-                                {Boolean(option) && draft.answer === option && (
-                                  <Badge
-                                    className="hidden gap-1 sm:inline-flex"
-                                    variant="secondary"
-                                  >
-                                    <Check className="size-3" /> Correct
-                                  </Badge>
-                                )}
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() =>
-                                    removeOption(index, optionIndex)
-                                  }
-                                  aria-label={`Remove option ${optionIndex + 1}`}
-                                >
-                                  <X />
-                                </Button>
-                              </div>
-                            ))}
+                              ),
+                            )}
                           </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="mt-3"
-                            disabled={options.length >= 6}
-                            onClick={() => addOption(index)}
-                          >
-                            <Plus /> Add option
-                          </Button>
-                          <p className="mt-2 text-sm text-destructive">
-                            {optionsError ??
-                              formState.errors.cards?.[index]?.answer?.message}
-                          </p>
-                        </fieldset>
-                      )}
-                      <details
-                        className="min-w-0 rounded-xl border p-4"
-                        open={Boolean(draft.questionImage || draft.answerImage)}
-                      >
-                        <summary className="cursor-pointer text-sm font-medium">
-                          Images (optional)
-                        </summary>
-                        <p className="my-3 text-sm text-muted-foreground">
-                          Use HTTPS image URLs or paths on this site. External
-                          images contact their host and may be unavailable
-                          offline. JSON backups save references, not image
-                          files.
-                        </p>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          {(["questionImage", "answerImage"] as const).map(
-                            (side) => (
-                              <CardImageEditor
-                                key={side}
-                                id={`${fields[index].fieldId}-${side}`}
-                                label={
-                                  side === "questionImage"
-                                    ? "Question image"
-                                    : "Answer image"
-                                }
-                                value={draft[side]}
-                                onChange={(image) =>
-                                  form.setValue(
-                                    `cards.${index}.${side}`,
-                                    image,
-                                    { shouldDirty: true, shouldValidate: true },
-                                  )
-                                }
-                              />
-                            ),
-                          )}
-                        </div>
-                      </details>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <label
-                            className="text-sm font-medium"
-                            htmlFor={`category-${index}`}
-                          >
-                            Category
-                          </label>
-                          <Input
-                            id={`category-${index}`}
-                            {...register(`cards.${index}.category`)}
-                          />
-                        </div>
-                        <div>
-                          <label
-                            className="text-sm font-medium"
-                            htmlFor={`tags-${index}`}
-                          >
-                            Tags
-                          </label>
-                          <Input
-                            id={`tags-${index}`}
-                            defaultValue={values.cards?.[index]?.tags?.join(
-                              ", ",
-                            )}
-                            onBlur={(event) =>
-                              form.setValue(
-                                `cards.${index}.tags`,
-                                event.target.value
-                                  .split(",")
-                                  .map((tag) => tag.trim())
-                                  .filter(Boolean),
-                                { shouldDirty: true },
-                              )
-                            }
-                            placeholder="planning, WBS"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium">
-                            Difficulty
-                          </label>
-                          <Select
-                            value={String(
-                              values.cards?.[index]?.difficulty ?? 2,
-                            )}
-                            onValueChange={(value) =>
-                              form.setValue(
-                                `cards.${index}.difficulty`,
-                                Number(value) as 1 | 2 | 3,
-                                { shouldDirty: true },
-                              )
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">Easy</SelectItem>
-                              <SelectItem value="2">Medium</SelectItem>
-                              <SelectItem value="3">Hard</SelectItem>
-                            </SelectContent>
-                          </Select>
+                        </details>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label
+                              className="text-sm font-medium"
+                              htmlFor={`category-${index}`}
+                            >
+                              Category
+                            </label>
+                            <Input
+                              id={`category-${index}`}
+                              {...register(`cards.${index}.category`)}
+                            />
+                          </div>
+                          <div>
+                            <label
+                              className="text-sm font-medium"
+                              htmlFor={`tags-${index}`}
+                            >
+                              Tags
+                            </label>
+                            <Input
+                              id={`tags-${index}`}
+                              defaultValue={values.cards?.[index]?.tags?.join(
+                                ", ",
+                              )}
+                              onBlur={(event) =>
+                                form.setValue(
+                                  `cards.${index}.tags`,
+                                  event.target.value
+                                    .split(",")
+                                    .map((tag) => tag.trim())
+                                    .filter(Boolean),
+                                  { shouldDirty: true },
+                                )
+                              }
+                              placeholder="planning, WBS"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-sm font-medium">
+                              Difficulty
+                            </label>
+                            <Select
+                              value={String(
+                                values.cards?.[index]?.difficulty ?? 2,
+                              )}
+                              onValueChange={(value) =>
+                                form.setValue(
+                                  `cards.${index}.difficulty`,
+                                  Number(value) as 1 | 2 | 3,
+                                  { shouldDirty: true },
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="1">Easy</SelectItem>
+                                <SelectItem value="2">Medium</SelectItem>
+                                <SelectItem value="3">Hard</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </>
-                );
-              })()}
-            </article>
-          ))}
-        </div>
-      )}
-    </form>
+                    </>
+                  );
+                })()}
+              </article>
+            ))}
+          </div>
+        )}
+        {batch && (
+          <Button type="submit" disabled={uploading || !fields.length}>
+            Add cards to deck
+          </Button>
+        )}
+      </form>
+    </ImageDraftContext.Provider>
   );
 }
