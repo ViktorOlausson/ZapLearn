@@ -1,10 +1,100 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDeckFile } from "@/types/deck";
+import { CardImageSchema, parseDeckFile } from "@/types/deck";
 
 function parseCard(card: Record<string, unknown>) {
   return parseDeckFile(JSON.stringify({ title: "Questions", cards: [card] }));
 }
+
+describe("optional card images", () => {
+  const image = {
+    src: "https://example.com/shoulder.jpg",
+    alt: "Highlighted outer shoulder",
+    caption: "Identify the structure",
+  };
+  const card = { question: "What is this?", answer: "Deltoid" };
+
+  it.each([
+    {},
+    { questionImage: image },
+    { answerImage: image },
+    { questionImage: image, answerImage: image },
+    {
+      type: "multiple-choice",
+      options: ["Deltoid", "Biceps", "Triceps"],
+      questionImage: image,
+    },
+  ])("accepts compatible cards and preserves metadata: %j", (extra) => {
+    const result = parseCard({ ...card, ...extra });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.deck.cards[0]).toMatchObject(extra);
+  });
+
+  it.each([
+    { alt: "Description" },
+    { src: "", alt: "Description" },
+    { src: image.src },
+    { src: image.src, alt: "  " },
+    { src: image.src, alt: 42 },
+    null,
+    "image.jpg",
+    [],
+    { src: "x".repeat(4097), alt: "Description" },
+    { ...image, alt: "x".repeat(2001) },
+    { ...image, caption: "x".repeat(2001) },
+  ])("rejects malformed image metadata: %j", (questionImage) => {
+    const result = parseCard({ ...card, questionImage });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.errors.join(" ")).toContain("Card 1 · questionImage");
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "JAVASCRIPT:alert(1)",
+    "file:///image.png",
+    "vbscript:msgbox(1)",
+    "data:image/svg+xml,<svg/>",
+    "data:image/png;base64,eA==",
+    "blob:https://example.com/id",
+    "http://example.com/a.png",
+    "//example.com/a.png",
+    "/\\example.com/a.png",
+    "images/a.png",
+    "https://",
+    "https://user:password@example.com/a.png",
+    "https://example.com/\na.png",
+    "/\u0000image.jpg",
+    "ftp://example.com/image.jpg",
+  ])("rejects unsafe or unsupported src %s", (src) => {
+    const result = parseCard({ ...card, questionImage: { ...image, src } });
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.errors.join(" ")).toContain("questionImage.src");
+  });
+
+  it.each([
+    "/images/anatomy.jpg",
+    "/data/images/example.webp",
+    "https://example.com/image.svg",
+    "https://example.com/image.png?v=1",
+  ])("allows supported source %s", (src) => {
+    expect(CardImageSchema.safeParse({ ...image, src }).success).toBe(true);
+  });
+
+  it("strips unexpected image properties and preserves stable IDs across image edits", () => {
+    const original = parseCard(card);
+    const edited = parseCard({
+      ...card,
+      questionImage: { ...image, onerror: "alert(1)", html: "<script/>" },
+    });
+    expect(original.ok && edited.ok).toBe(true);
+    if (original.ok && edited.ok) {
+      expect(edited.deck.cards[0].id).toBe(original.deck.cards[0].id);
+      expect(edited.deck.cards[0].questionImage).toEqual(image);
+    }
+  });
+});
 
 describe("deck import validation", () => {
   it("accepts a valid deck and creates deterministic IDs for cards", () => {

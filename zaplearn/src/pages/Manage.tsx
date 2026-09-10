@@ -31,7 +31,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { downloadJson } from "@/lib/download";
+import { downloadBlob, downloadJson } from "@/lib/download";
+import { exportDeckPackage } from "@/features/images/deckPackage";
+import { localImageIds } from "@/features/images/imageRepo";
 import { CreateDeckDialog } from "@/features/decks/components/CreateDeckDialog";
 import { duplicateDeck as makeDeckCopy } from "@/features/decks/deckService";
 import { useDeckStore } from "@/features/decks/deckStore";
@@ -132,7 +134,21 @@ export function Manage() {
       toast.error("Unable to duplicate the deck.");
     }
   }
-  function exportDeck(deck: Deck, progress: boolean) {
+  async function exportDeck(deck: Deck, progress: boolean) {
+    if (localImageIds(deck.cards).size) {
+      try {
+        const blob = await exportDeckPackage(deck);
+        downloadBlob(`${filename(deck.title)}.zaplearn.zip`, blob);
+        toast.success(
+          "Image package downloaded. Includes deck and local images.",
+        );
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not export images.",
+        );
+      }
+      return;
+    }
     const document = documents[deck.id];
     downloadJson(
       `${filename(deck.title)}${progress ? "-with-progress" : ""}.json`,
@@ -221,12 +237,21 @@ export function Manage() {
                     variant="outline"
                     onClick={() => exportDeck(deck, false)}
                   >
-                    <Download /> Backup deck
+                    <Download />{" "}
+                    {localImageIds(deck.cards).size
+                      ? "Export with images"
+                      : "Backup deck"}
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => exportDeck(deck, true)}
+                    disabled={localImageIds(deck.cards).size > 0}
+                    title={
+                      localImageIds(deck.cards).size
+                        ? "Image packages include cards and images, but not study progress."
+                        : undefined
+                    }
                   >
                     <Download /> Backup + progress
                   </Button>
@@ -332,10 +357,14 @@ export function Manage() {
               currently no account or cloud sync.
             </p>
             <p className="mt-3 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-              Use Backup deck to export JSON for backup or transfer. Backup +
-              progress also archives study history, but progress cannot
-              currently be restored through Import JSON. Clearing this browser’s
-              site data may remove locally saved decks and study history.
+              Use Backup deck to export JSON for backup or transfer. Decks with
+              uploaded images use Export with images (.zaplearn.zip); import
+              that package to restore the deck and images on another device.
+              Packages do not include progress. JSON-only backups preserve image
+              URLs, not local image files. Backup + progress also archives study
+              history, but progress cannot currently be restored through Import
+              JSON. Clearing this browser’s site data may remove locally saved
+              decks and study history.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <Badge variant="secondary" role="status">

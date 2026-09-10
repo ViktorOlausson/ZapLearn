@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
+import { StudyImage } from "@/components/common/StudyImage";
 import { textToSafeLines } from "@/lib/sanitize";
 import type { Card } from "@/types/deck";
 
@@ -52,6 +53,9 @@ export function Flashcard({
             <span className="mb-5 text-xs font-semibold tracking-[0.18em] text-primary uppercase">
               Question
             </span>
+            {!flipped && card.questionImage && (
+              <StudyImage image={card.questionImage} />
+            )}
             <span className="min-w-0 text-xl font-medium leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
               <CardText value={card.question} />
             </span>
@@ -69,6 +73,9 @@ export function Flashcard({
             <span className="min-w-0 text-xl font-medium leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
               <CardText value={card.answer} />
             </span>
+            {flipped && card.answerImage && (
+              <StudyImage image={card.answerImage} />
+            )}
             {card.category && (
               <span className="mt-8 text-sm text-muted-foreground">
                 {card.category}

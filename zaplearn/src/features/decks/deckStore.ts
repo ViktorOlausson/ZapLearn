@@ -7,13 +7,14 @@ import {
   saveDeck,
 } from "@/features/decks/deckRepo";
 import { type Deck } from "@/types/deck";
+import type { ImageAsset } from "@/features/images/imageRepo";
 
 type DeckState = {
   decks: Deck[];
   loading: boolean;
   error?: string;
   initialize: () => Promise<void>;
-  save: (deck: Deck) => Promise<void>;
+  save: (deck: Deck, assets?: ImageAsset[]) => Promise<void>;
   remove: (id: string) => Promise<void>;
   get: (id: string) => Promise<Deck | null>;
 };
@@ -29,8 +30,8 @@ export const useDeckStore = create<DeckState>((set, get) => ({
       set({ error: "Could not load local decks.", loading: false });
     }
   },
-  async save(deck) {
-    await saveDeck(deck);
+  async save(deck, assets) {
+    await saveDeck(deck, assets);
     set({
       decks: [deck, ...get().decks.filter((item) => item.id !== deck.id)],
     });

@@ -31,7 +31,7 @@ test("import, edit, study, persist, export, reset, and delete", async ({
   ).toBeVisible();
   await page.getByRole("link", { name: "Edit ZapLearn Test Deck" }).click();
 
-  const question = page.getByLabel("Question").first();
+  const question = page.getByLabel("Question", { exact: true }).first();
   await question.fill("What is the HTTP protocol?");
   const saveStatus = page.getByTestId("save-status");
   await expect(saveStatus).toHaveText("Saving…");
@@ -57,13 +57,19 @@ test("import, edit, study, persist, export, reset, and delete", async ({
   });
   expect(savedQuestion).toBe("What is the HTTP protocol?");
   await page.reload();
-  await expect(page.getByLabel("Question").first()).toHaveValue(
-    "What is the HTTP protocol?",
-  );
+  await expect(
+    page.getByLabel("Question", { exact: true }).first(),
+  ).toHaveValue("What is the HTTP protocol?");
 
   await page.getByRole("button", { name: "Add card", exact: true }).click();
-  await page.getByLabel("Question").last().fill("What is the DOM?");
-  await page.getByLabel("Answer").last().fill("The Document Object Model");
+  await page
+    .getByLabel("Question", { exact: true })
+    .last()
+    .fill("What is the DOM?");
+  await page
+    .getByLabel("Answer", { exact: true })
+    .last()
+    .fill("The Document Object Model");
   await expect(saveStatus).toHaveText("Saving…");
   await expect(saveStatus).toHaveText("Saved", { timeout: 3_000 });
 
