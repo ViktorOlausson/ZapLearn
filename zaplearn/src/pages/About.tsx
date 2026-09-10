@@ -19,9 +19,9 @@ export function About() {
       <section className="space-y-3 rounded-xl border bg-card p-6">
         <h2 className="text-xl font-semibold">Your data and backups</h2>
         <p className="leading-relaxed text-muted-foreground">
-          Decks and study progress are stored locally in this browser on this
-          device using IndexedDB. There are currently no accounts or cloud sync.
-          Clearing browser or site data can remove your saved work.
+          Decks, settings, and study progress are stored locally in this browser
+          on this device using IndexedDB. There are currently no accounts or
+          cloud sync. Clearing browser or site data can remove your saved work.
         </p>
         <p className="leading-relaxed text-muted-foreground">
           Persistent storage, when granted by your browser, can reduce automatic
@@ -31,6 +31,61 @@ export function About() {
             Manage decks
           </Link>
           .
+        </p>
+      </section>
+
+      <section className="space-y-3 rounded-xl border bg-card p-6">
+        <h2 className="text-xl font-semibold">Images in ZapLearn</h2>
+        <p className="leading-relaxed text-muted-foreground">
+          Traditional flashcards and multiple-choice questions can have optional
+          images. Mix cards with and without images in the same deck. Add images
+          in the editor’s Images section or include them in imported JSON:
+        </p>
+        <pre className="max-w-full overflow-x-auto rounded-lg bg-muted p-4 text-xs">
+          <code>
+            {JSON.stringify(
+              {
+                type: "multiple-choice",
+                question: "Which exercise is shown?",
+                answer: "Back squat",
+                options: [
+                  "Deadlift",
+                  "Back squat",
+                  "Front squat",
+                  "Good morning",
+                ],
+                questionImage: {
+                  src: "https://example.com/back-squat.jpg",
+                  alt: "Person holding a barbell across the upper back with knees and hips bent",
+                  caption: "Identify the movement",
+                },
+              },
+              null,
+              2,
+            )}
+          </code>
+        </pre>
+        <p className="leading-relaxed text-muted-foreground">
+          questionImage appears with the question; answerImage appears with the
+          revealed answer, or after selecting a multiple-choice option. Each
+          image requires src (an HTTPS URL or a path on this site such as
+          /images/exercise.jpg) and meaningful alt text describing it for
+          accessibility. Avoid unnecessarily revealing the answer in alt text.
+          The caption is optional. Paths refer to this website, not the deck
+          URL.
+        </p>
+        <p className="leading-relaxed text-muted-foreground">
+          This version supports image URLs, not local file uploads. JSON exports
+          preserve image references but do not back up the image files. Keep
+          your own copies: links can stop working when a host removes an image,
+          and remote images may be unavailable offline. Failed images show their
+          alt text and you can continue studying.
+        </p>
+        <p className="leading-relaxed text-muted-foreground">
+          External images make requests to their hosts, which can see your IP
+          address and may receive cookies according to browser policy. Study
+          images send no referrer. ZapLearn does not automatically download
+          remote images for offline storage.
         </p>
       </section>
 

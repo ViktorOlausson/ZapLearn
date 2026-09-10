@@ -1,4 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,6 +29,104 @@ const deck: Deck = {
 };
 
 describe("DeckEditor", () => {
+  it("adds and autosaves image metadata, retains a failed preview URL, and removes the image", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<DeckEditor deck={deck} onSave={onSave} />);
+    await user.click(screen.getByText("Images (optional)"));
+    await user.click(
+      screen.getByRole("button", { name: "Add question image" }),
+    );
+    const fields = within(
+      screen.getByRole("group", { name: "Question image" }),
+    );
+    fireEvent.change(fields.getByLabelText("Image URL"), {
+      target: { value: "https://example.com/question.png" },
+    });
+    fireEvent.change(fields.getByLabelText("Alternative text"), {
+      target: { value: "Highlighted outer shoulder" },
+    });
+    fireEvent.change(fields.getByLabelText("Caption (optional)"), {
+      target: { value: "Identify the structure" },
+    });
+    fireEvent.error(fields.getByRole("img"));
+    expect(fields.getByText("Image could not be loaded.")).toBeInTheDocument();
+    expect(fields.getByLabelText("Image URL")).toHaveValue(
+      "https://example.com/question.png",
+    );
+    await waitFor(() =>
+      expect(onSave).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          cards: [
+            expect.objectContaining({
+              id: "card-one",
+              questionImage: {
+                src: "https://example.com/question.png",
+                alt: "Highlighted outer shoulder",
+                caption: "Identify the structure",
+              },
+            }),
+          ],
+        }),
+      ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Remove question image" }),
+    );
+    await waitFor(() =>
+      expect(onSave.mock.lastCall?.[0].cards[0].questionImage).toBeUndefined(),
+    );
+    expect(screen.queryByLabelText("Image URL")).not.toBeInTheDocument();
+  });
+
+  it("blocks invalid image autosaves and retains images when duplicating and converting cards", async () => {
+    const user = userEvent.setup();
+    const image = { src: "/images/q.png", alt: "Question diagram" };
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <DeckEditor
+        deck={{
+          ...deck,
+          cards: [
+            { ...deck.cards[0], questionImage: image, answerImage: image },
+          ],
+        }}
+        onSave={onSave}
+      />,
+    );
+    const source = within(
+      screen.getByRole("group", { name: "Question image" }),
+    ).getByLabelText("Image URL");
+    fireEvent.change(source, { target: { value: "javascript:alert(1)" } });
+    await waitFor(() =>
+      expect(screen.getByTestId("save-status")).toHaveTextContent(
+        "Fix validation errors",
+      ),
+    );
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.change(source, { target: { value: image.src } });
+    await waitFor(() =>
+      expect(screen.getByTestId("save-status")).toHaveTextContent("Saved"),
+    );
+    onSave.mockClear();
+    await user.click(screen.getByRole("combobox", { name: "Card 1 type" }));
+    await user.click(screen.getByRole("option", { name: "Multiple choice" }));
+    await user.click(screen.getByRole("button", { name: "Add option" }));
+    fireEvent.change(screen.getByLabelText("Option 2"), {
+      target: { value: "Distractor" },
+    });
+    await user.click(screen.getByRole("button", { name: "Duplicate card 1" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const cards = onSave.mock.lastCall?.[0].cards;
+    expect(cards).toHaveLength(2);
+    for (const card of cards)
+      expect(card).toMatchObject({
+        type: "multiple-choice",
+        questionImage: image,
+        answerImage: image,
+      });
+    expect(cards[0].id).not.toBe(cards[1].id);
+  });
   it("validates required fields and autosaves an edited card", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);

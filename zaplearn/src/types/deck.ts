@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IdSchema } from "@/types/id";
 
 import { stableHash } from "@/lib/hash";
+import { isSafeImageSource } from "@/lib/imageSource";
 
 export const SCHEMA_VERSION = 1;
 
@@ -12,6 +13,19 @@ const requiredText = (label: string) =>
     .trim()
     .min(1, `${label} is required`);
 const optionalText = z.string().trim().min(1);
+
+export const CardImageSchema = z
+  .object({
+    src: requiredText("Image URL").max(4096).refine(isSafeImageSource, {
+      message:
+        "Use an HTTPS image URL or a same-origin path starting with / (no credentials or unsafe schemes)",
+    }),
+    alt: requiredText("Alternative text").max(2000),
+    caption: z.string().trim().max(2000).optional(),
+  })
+  .strip();
+
+export type CardImage = z.infer<typeof CardImageSchema>;
 
 export const DifficultySchema = z.union([
   z.literal(1),
@@ -23,6 +37,8 @@ const cardShape = <T extends z.ZodType>(id: T) => ({
   id,
   question: requiredText("Question"),
   answer: requiredText("Answer"),
+  questionImage: CardImageSchema.optional(),
+  answerImage: CardImageSchema.optional(),
   category: optionalText.optional(),
   tags: z.array(optionalText).default([]),
   difficulty: DifficultySchema.default(2),

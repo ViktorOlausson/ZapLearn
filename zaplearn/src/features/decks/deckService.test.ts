@@ -11,8 +11,50 @@ import {
   readDeckFile,
 } from "@/features/decks/deckService";
 import { parseDeckFile } from "@/types/deck";
+import { migrateDeck } from "@/features/decks/deckRepo";
 
 describe("file deck import", () => {
+  it("round-trips all image combinations through file import, persistence validation, and export", async () => {
+    const image = {
+      src: "/data/images/q.png",
+      alt: "Highlighted region",
+      caption: "Identify it",
+    };
+    const cards = [
+      { question: "No image", answer: "A" },
+      { question: "Question image", answer: "B", questionImage: image },
+      { question: "Answer image", answer: "C", answerImage: image },
+      {
+        question: "Both images",
+        answer: "D",
+        questionImage: image,
+        answerImage: image,
+      },
+      {
+        type: "multiple-choice",
+        question: "Choose",
+        answer: "E",
+        options: ["D", "E", "F"],
+        questionImage: { ...image, src: "https://example.com/q.png" },
+        answerImage: image,
+      },
+    ];
+    const imported = await readDeckFile(
+      new File([JSON.stringify({ title: "Image deck", cards })], "images.json"),
+    );
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    const stored = migrateDeck(materializeDeck(imported.deck, "new"));
+    expect(stored).not.toBeNull();
+    const reimported = await readDeckFile(
+      new File([JSON.stringify(stored)], "backup.json"),
+    );
+    expect(reimported.ok).toBe(true);
+    if (reimported.ok) {
+      expect(reimported.deck.cards).toEqual(imported.deck.cards);
+      expect(reimported.deck.cards).toMatchObject(cards);
+    }
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
   });

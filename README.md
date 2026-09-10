@@ -7,6 +7,7 @@ ZapLearn is a local-first flashcard app for creating, importing, editing, and st
 - Create decks and edit cards with automatic saving.
 - Import validated JSON through the file picker or drag and drop.
 - Study traditional flashcards, multiple-choice questions, or mixed decks.
+- Add question and answer images with accessible descriptions, captions, and editor previews.
 - Track correct/incorrect answers with a simple spaced-repetition schedule.
 - Browse cards without changing progress; search and filter study material.
 - Manage, duplicate, export, reset, and delete decks.
@@ -35,7 +36,7 @@ Persistent storage can reduce automatic eviction, but **browser storage is not a
 1. Select **Import JSON**, or drop a `.json` file on the import area.
 2. ZapLearn checks the actual content with JSON parsing and Zod before saving. A `.json` extension or JSON MIME type is a picker hint, not proof that content is safe.
 3. Files and downloaded seed responses are limited to **2 MiB (2,097,152 bytes)**, shown as 2 MB in the UI. Invalid imports show validation errors.
-4. Export any deck from **Manage decks → Backup deck**. Exports preserve card IDs, types, and multiple-choice options.
+4. Export any deck from **Manage decks → Backup deck**. Exports preserve card IDs, types, multiple-choice options, and image metadata. Image files themselves are not included.
 
 Expected JSON deck format:
 
@@ -71,6 +72,79 @@ Cards without `type`, or with `"type": "flashcard"`, are traditional flashcards.
 ```
 
 Provide 2–6 non-empty unique options; the exact answer must appear once. A deck can mix both card types. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
+
+### Images in the JSON deck format
+
+Both card types optionally accept `questionImage` and `answerImage`, using the same image structure:
+
+```ts
+type CardImage = {
+  src: string;
+  alt: string;
+  caption?: string;
+};
+// Optional fields on any card:
+// questionImage?: CardImage
+// answerImage?: CardImage
+```
+
+`src` and meaningful `alt` text are required and cannot be blank. `caption` is optional. URLs are limited to 4,096 characters; alt text and captions to 2,000 characters each. Unexpected properties are stripped. Invalid imports identify the card and field, for example `Card 14 · questionImage.src`.
+
+Use an absolute **HTTPS URL** or a **same-origin root path**, such as `/images/anatomy/deltoid.jpg` or `/data/images/deltoid.jpg`. Root paths always refer to the ZapLearn website, including when a deck comes from another URL; deck-relative paths such as `images/deltoid.jpg` are not supported. URL credentials, protocol-relative URLs (`//host/image.jpg`), HTTP external URLs, `data:`, `blob:`, `file:`, `javascript:`, and other schemes are rejected. Encode spaces in URLs as `%20`. SVG resources may be loaded as ordinary `<img>` images; imported SVG/XML is never injected into the DOM.
+
+`questionImage` appears above the question. `answerImage` appears after revealing a flashcard or choosing a multiple-choice option. Existing grading, shuffled options, keyboard controls, and spaced repetition apply. Browse mode shows images without scoring. Editing image metadata does not change a card's ID or reset its progress.
+
+This complete mixed deck includes an ordinary flashcard, an image flashcard, a multiple-choice card, and an image multiple-choice card:
+
+```json
+{
+  "title": "Anatomy and movement",
+  "lang": "en",
+  "cards": [
+    {
+      "question": "What is flexion?",
+      "answer": "A movement that decreases the angle between two body segments."
+    },
+    {
+      "question": "What muscle is highlighted?",
+      "answer": "Deltoid",
+      "questionImage": {
+        "src": "https://example.com/deltoid.jpg",
+        "alt": "Anatomical image highlighting the outer shoulder",
+        "caption": "Identify the highlighted structure"
+      },
+      "answerImage": {
+        "src": "/images/deltoid-labelled.jpg",
+        "alt": "Labelled diagram showing the deltoid covering the shoulder"
+      }
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which movement decreases a joint angle?",
+      "answer": "Flexion",
+      "options": ["Extension", "Flexion", "Rotation"]
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which exercise is shown?",
+      "answer": "Back squat",
+      "options": ["Deadlift", "Back squat", "Front squat", "Good morning"],
+      "questionImage": {
+        "src": "https://example.com/back-squat.jpg",
+        "alt": "Person holding a barbell across the upper back with knees and hips bent"
+      }
+    }
+  ]
+}
+```
+
+These example URLs illustrate the format; replace them with your own working resources. The JSON imports successfully even if an image is unavailable. An answer-only image is also allowed: omit `questionImage` and include `answerImage` on a card with its usual question and answer.
+
+In the editor, expand **Images (optional)**, add a question or answer image, and enter **Image URL**, **Alternative text**, and optionally **Caption**. Valid URLs show a preview; a failed preview keeps the entered URL. Use **Remove question image** or **Remove answer image** to remove it. Alt text should describe the study information accessibly without unnecessarily revealing the answer: “outer shoulder highlighted” is better than naming the muscle for an identification question.
+
+This implementation uses URL references, **not local file uploads or embedded image data**. References stay with decks in IndexedDB and survive JSON export/import. Images are responsive, preserve aspect ratio, and have a bounded display height. Failed or unavailable images show a fallback with their alt text so studying can continue. Active study images load eagerly; editor previews load lazily.
+
+**Backups and offline use:** JSON export backs up image references and descriptions, not remote image files. Keep your own copies of images; external links can disappear. Same-origin paths require those files on the destination deployment when transferring decks. For Docker, host images under the static root or mount them in the existing `/data` directory. Browser caching may help repeat visits, but ZapLearn does not aggressively cache arbitrary study images or guarantee their offline availability. The offline app shell continues working when images fail.
 
 ## Creating flashcards with AI
 
@@ -253,6 +327,115 @@ Study material:
 [PASTE STUDY MATERIAL HERE]
 ```
 
+### Image flashcard prompt
+
+Supply the actual image URLs alongside your material. Do not ask an LLM to invent URLs. Copy and customize:
+
+```text
+Create a ZapLearn-compatible image-based flashcard deck from the study material and image URLs I provide.
+
+Return valid JSON only. Do not wrap the JSON in Markdown code fences.
+Do not include commentary before or after the JSON.
+
+Use this structure (replace all placeholders with supplied content):
+{
+  "title": "Deck title",
+  "lang": "en",
+  "cards": [
+    {
+      "question": "What is shown in this image?",
+      "answer": "Correct answer",
+      "questionImage": {
+        "src": "USER_SUPPLIED_IMAGE_URL",
+        "alt": "Useful description without unnecessarily revealing the answer"
+      },
+      "category": "Category",
+      "tags": ["tag1", "tag2"],
+      "difficulty": 2
+    }
+  ]
+}
+
+Requirements:
+- title is required; cards must be a non-empty array.
+- Every card requires non-empty question and answer.
+- questionImage and answerImage are optional. Each image requires src and alt; caption is optional.
+- src must use HTTPS or a same-origin path starting with a single /.
+- Do not generate or guess image URLs. Do not output placeholder URLs.
+- Only use image URLs supplied by me unless I explicitly ask you to find suitable images.
+- Preserve each supplied image URL exactly unless instructed otherwise.
+- If no suitable URL is supplied, omit the image field or ask for a URL; never fabricate one.
+- Write meaningful alt text describing the image for accessibility without unnecessarily revealing the answer.
+- Put answer illustrations in answerImage when they should only appear after reveal.
+- Do not generate IDs unless specifically requested. Avoid duplicate questions.
+- Keep answers concise but sufficiently complete.
+- category, tags, and difficulty are optional; difficulty must be 1, 2, or 3.
+- Preserve terminology and language from the supplied material. Do not invent unsupported facts.
+
+Requested title and language: [TITLE AND LANGUAGE/CODE]
+Study material: [PASTE MATERIAL]
+Image URLs and what each image depicts: [PASTE YOUR URLS AND DESCRIPTIONS]
+```
+
+### Image multiple-choice prompt
+
+```text
+Create a ZapLearn-compatible image-based multiple-choice study deck using the study material and image URLs I provide.
+
+Return valid JSON only. Do not use Markdown fences.
+Do not include commentary before or after the JSON.
+
+Use this structure (replace all placeholders with supplied content):
+{
+  "title": "Deck title",
+  "lang": "en",
+  "cards": [
+    {
+      "type": "multiple-choice",
+      "question": "What is shown in this image?",
+      "answer": "Correct answer",
+      "options": [
+        "Plausible incorrect answer 1",
+        "Correct answer",
+        "Plausible incorrect answer 2",
+        "Plausible incorrect answer 3"
+      ],
+      "questionImage": {
+        "src": "USER_SUPPLIED_IMAGE_URL",
+        "alt": "Useful description without unnecessarily revealing the answer"
+      },
+      "category": "Category",
+      "tags": ["tag1", "tag2"],
+      "difficulty": 2
+    }
+  ]
+}
+
+Requirements:
+- title is required; cards must be a non-empty array.
+- Every card requires type: "multiple-choice", question, answer, and options.
+- Every card must have exactly one correct answer. answer is that answer and must appear exactly once in options.
+- Prefer 4 options when good alternatives exist. Use at least 3 if 4 reasonable alternatives cannot be created, and no more than 6.
+- Options must be unique. Incorrect answers must be plausible distractors, not obviously ridiculous or unrelated.
+- Avoid ambiguous questions where several options could reasonably be correct.
+- Do not always position the correct answer first. Do not label it or add "(correct)" or similar text.
+- questionImage and answerImage are optional; answerImage appears after selection.
+- Each image requires src and alt; caption is optional.
+- src must use HTTPS or a same-origin path starting with a single /.
+- Do not invent image URLs. Only use URLs supplied by me unless specifically instructed to find suitable images.
+- Do not output placeholder URLs. Preserve supplied URLs exactly.
+- If no suitable URL is supplied, omit the image or ask for one.
+- Write useful alt text for accessibility without unnecessarily giving away the answer.
+- Do not generate IDs unless requested; avoid duplicate questions.
+- category, tags, and difficulty are optional; difficulty must be 1, 2, or 3.
+- Keep answers concise but sufficiently complete. Preserve the supplied language and terminology.
+- Do not invent unsupported facts.
+
+Requested title and language: [TITLE AND LANGUAGE/CODE]
+Study material: [PASTE MATERIAL]
+Image URLs and what each image depicts: [PASTE YOUR URLS AND DESCRIPTIONS]
+```
+
 ## Run locally
 
 Use Node.js 22.12+ and npm (the included Docker build uses Node 20.19+).
@@ -333,15 +516,17 @@ The container writes `/runtime/config.json` at startup. Keep seed URLs same-orig
 - File size is checked before reading; remote bodies are also bounded while streaming, even when Content-Length is missing or misleading. URL decks allow only HTTP(S), use the same JSON validation, and cannot insert scripts. The production CSP limits connections to the app's own origin.
 - No application secrets, tokens, or credentials are stored in IndexedDB/localStorage. Browser data and exported JSON are not application-encrypted; anyone with access to the browser profile or backup files may read them.
 - Decks and progress are not uploaded. The host receives ordinary asset/configuration requests and may log connection metadata. Optional seed requests are network requests. Pasting source material into an external AI tool is governed by that tool's policies.
+- External study images and editor previews contact the image host, exposing connection metadata such as IP address and potentially sending cookies according to browser policy. They use `referrerPolicy="no-referrer"`. Remote images are not private local assets or guaranteed offline resources. Only use image hosts you trust; JSON export does not back up their files.
 - There are currently no `target="_blank"` links. Future external new-tab links should use `rel="noopener noreferrer"`.
 - Nginx and compatible static hosts send `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, framing controls, and Content Security Policy. Nginx runtime-config responses retain these headers alongside their no-store policy; see [Nginx header inheritance](https://nginx.org/en/docs/http/ngx_http_headers_module.html).
-- CSP restricts scripts, workers, network access, and assets to the origin and blocks plugins/frames. Inline scripts and dynamic evaluation remain blocked. Inline styles are allowed for Sonner/Radix component styles and React animation/positioning; this exception does not permit imported HTML or JavaScript. Theme changes use the existing settings store without an inline bootstrap script.
+- CSP restricts scripts, workers, and fetch connections to the origin and blocks plugins/frames. `img-src 'self' data: https:` additionally permits external HTTPS images; the existing data-image allowance is retained for application assets, but imported data URLs are rejected. All other directives remain unchanged. Inline scripts and dynamic evaluation remain blocked. Inline styles are allowed for Sonner/Radix component styles and React animation/positioning; this exception does not permit imported HTML or JavaScript. Theme changes use the existing settings store without an inline bootstrap script.
 
 These are practical frontend protections, not a guarantee of security. Keep dependencies and hosting software updated and review changes before deployment.
 
 ## Current limitations
 
 - No accounts, cloud sync, collaboration, or automatic backup.
+- Images use HTTPS URLs or same-origin paths; local image uploads and embedded image export are not supported. Remote images can disappear or fail offline, and same-origin image files must be backed up separately.
 - Persistence is browser-controlled and never protects against clearing site data.
 - Progress bundles can be exported but cannot yet be restored through the importer.
 - Imported decks require at least one card; add a card to an empty local deck before exporting it for re-import.

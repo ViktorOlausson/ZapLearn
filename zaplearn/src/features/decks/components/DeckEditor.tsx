@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createId } from "@/lib/hash";
+import { CardImageEditor } from "@/features/decks/components/CardImageEditor";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import {
   DifficultySchema,
+  CardImageSchema,
   isMultipleChoiceCard,
   type Card,
   type Deck,
@@ -29,6 +31,8 @@ const EditorCardShape = {
   id: z.string().min(1),
   question: z.string().trim().min(1, "Question is required"),
   answer: z.string().trim().min(1, "Answer is required"),
+  questionImage: CardImageSchema.optional(),
+  answerImage: CardImageSchema.optional(),
   category: z.string().trim().optional(),
   tags: z.array(z.string()),
   difficulty: DifficultySchema,
@@ -93,6 +97,8 @@ function baseCard(card: Card) {
     id: card.id,
     question: card.question,
     answer: card.answer,
+    questionImage: card.questionImage,
+    answerImage: card.answerImage,
     category: card.category,
     tags: card.tags,
     difficulty: card.difficulty,
@@ -100,7 +106,9 @@ function baseCard(card: Card) {
 }
 
 function cardMatches(
-  card: Partial<EditorValues["cards"][number]>,
+  card: Partial<
+    Pick<Card, "question" | "answer" | "category" | "tags" | "difficulty">
+  >,
   query: string,
 ): boolean {
   if (!query) return true;
@@ -400,6 +408,12 @@ export function DeckEditor({
                           size="icon"
                           onClick={() =>
                             insert(index + 1, {
+                              questionImage: form.getValues(
+                                `cards.${index}.questionImage`,
+                              ),
+                              answerImage: form.getValues(
+                                `cards.${index}.answerImage`,
+                              ),
                               id: createId("card"),
                               question:
                                 values.cards?.[index]?.question ??
@@ -589,6 +603,43 @@ export function DeckEditor({
                           </p>
                         </fieldset>
                       )}
+                      <details
+                        className="min-w-0 rounded-xl border p-4"
+                        open={Boolean(draft.questionImage || draft.answerImage)}
+                      >
+                        <summary className="cursor-pointer text-sm font-medium">
+                          Images (optional)
+                        </summary>
+                        <p className="my-3 text-sm text-muted-foreground">
+                          Use HTTPS image URLs or paths on this site. External
+                          images contact their host and may be unavailable
+                          offline. JSON backups save references, not image
+                          files.
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {(["questionImage", "answerImage"] as const).map(
+                            (side) => (
+                              <CardImageEditor
+                                key={side}
+                                id={`${fields[index].fieldId}-${side}`}
+                                label={
+                                  side === "questionImage"
+                                    ? "Question image"
+                                    : "Answer image"
+                                }
+                                value={draft[side]}
+                                onChange={(image) =>
+                                  form.setValue(
+                                    `cards.${index}.${side}`,
+                                    image,
+                                    { shouldDirty: true, shouldValidate: true },
+                                  )
+                                }
+                              />
+                            ),
+                          )}
+                        </div>
+                      </details>
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div>
                           <label

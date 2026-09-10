@@ -107,11 +107,13 @@ describe("training controls", () => {
     expect(mocks.grade).toHaveBeenCalledWith("deck-one", "card-one", false);
   });
 
-  it("shows multiple-choice feedback, scores once, and resets for next", async () => {
+  it("shows image multiple-choice feedback, scores once, and resets for next", async () => {
     const user = userEvent.setup();
     mocks.deck.cards = [
       {
         id: "choice-one",
+        questionImage: { src: "/images/question.png", alt: "Question diagram" },
+        answerImage: { src: "/images/answer.png", alt: "Answer diagram" },
         type: "multiple-choice",
         question: "Choose the correct first answer",
         answer: "Correct first",
@@ -145,7 +147,14 @@ describe("training controls", () => {
     const optionOrder = screen
       .getAllByRole("button", { name: /^Option \d:/ })
       .map((option) => option.getAttribute("aria-label"));
+    expect(
+      screen.getByRole("img", { name: "Question diagram" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByAltText("Answer diagram")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Wrong first/ }));
+    expect(
+      screen.getByRole("img", { name: "Answer diagram" }),
+    ).toBeInTheDocument();
     expect(await screen.findByText("Incorrect.")).toBeInTheDocument();
     expect(screen.getByText(/Correct answer:/)).toHaveTextContent(
       "Correct answer: Correct first",
@@ -250,5 +259,27 @@ describe("training controls", () => {
       "choice-keyboard",
       true,
     );
+  });
+
+  it("browses image cards and reveals their answers without grading", async () => {
+    mocks.deck.cards[0].questionImage = {
+      src: "/q.png",
+      alt: "Question picture",
+    };
+    mocks.deck.cards[0].answerImage = { src: "/a.png", alt: "Answer picture" };
+    render(
+      <MemoryRouter initialEntries={["/train/deck-one?mode=browse"]}>
+        <Routes>
+          <Route path="/train/:deckId" element={<Train />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByRole("img", { name: "Question picture" });
+    fireEvent.keyDown(window, { key: " " });
+    expect(
+      screen.getByRole("img", { name: "Answer picture" }),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "2" });
+    expect(mocks.grade).not.toHaveBeenCalled();
   });
 });
