@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { StudyImage } from "@/components/common/StudyImage";
 import { cn } from "@/lib/utils";
 import type { MultipleChoiceCard } from "@/types/deck";
 
@@ -25,6 +26,7 @@ export function MultipleChoiceQuestion({
       <p className="text-xs font-semibold tracking-[0.18em] text-primary uppercase">
         Multiple choice
       </p>
+      {card.questionImage && <StudyImage image={card.questionImage} />}
       <h2 className="mt-4 min-w-0 text-xl font-semibold leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
         {card.question}
       </h2>
@@ -71,7 +73,11 @@ export function MultipleChoiceQuestion({
           );
         })}
       </div>
-      <div className="mt-6 min-h-14" aria-live="polite" aria-atomic="true">
+      <div
+        className="mt-6 min-h-14 [overflow-wrap:anywhere]"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {answered && correct && (
           <p className="font-semibold text-success">Correct!</p>
         )}
@@ -85,6 +91,7 @@ export function MultipleChoiceQuestion({
           </div>
         )}
       </div>
+      {answered && card.answerImage && <StudyImage image={card.answerImage} />}
     </section>
   );
 }

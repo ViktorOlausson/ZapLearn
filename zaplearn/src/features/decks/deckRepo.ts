@@ -1,4 +1,10 @@
 import localforage from "localforage";
+import {
+  getDraftImage,
+  imageAssets,
+  localImageIds,
+  type ImageAsset,
+} from "@/features/images/imageRepo";
 
 import { stableHash } from "@/lib/hash";
 import {
@@ -50,11 +56,87 @@ export async function getDeck(id: string): Promise<Deck | null> {
   return migrateDeck(await decks.getItem<unknown>(id));
 }
 
-export async function saveDeck(deck: Deck): Promise<void> {
+export async function saveDeck(
+  deck: Deck,
+  assets: ImageAsset[] = [],
+): Promise<void> {
   const validated = DeckSchema.parse(deck);
-  await decks.setItem(validated.id, validated);
+  const provided = new Map(assets.map((asset) => [asset.id, asset]));
+  for (const id of localImageIds(validated.cards)) {
+    const draft = getDraftImage(id);
+    if (draft) provided.set(id, draft);
+  }
+  await commitDeck(validated.id, validated, provided);
 }
 
 export async function deleteDeck(id: string): Promise<void> {
-  await decks.removeItem(id);
+  await commitDeck(id);
+}
+
+/** Deck writes, asset writes, and reference cleanup share one atomic transaction.
+ * IndexedDB serializes these transactions across tabs, including duplicates/deletes. */
+async function commitDeck(
+  id: string,
+  deck?: Deck,
+  provided = new Map<string, ImageAsset>(),
+): Promise<void> {
+  await decks.ready();
+  await imageAssets.ready();
+  await new Promise<void>((resolve, reject) => {
+    const opening = indexedDB.open("zaplearn");
+    opening.onerror = () => reject(opening.error);
+    opening.onsuccess = () => {
+      const db = opening.result;
+      db.onversionchange = () => db.close();
+      const tx = db.transaction(["decks", "images"], "readwrite");
+      let failure: Error | undefined;
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(
+          failure ?? tx.error ?? new Error("Could not save deck and images."),
+        );
+      };
+      const deckStore = tx.objectStore("decks");
+      const images = tx.objectStore("images");
+      if (deck) {
+        for (const assetId of localImageIds(deck.cards)) {
+          const asset = provided.get(assetId);
+          if (asset) images.put(asset, assetId);
+          else {
+            const request = images.get(assetId);
+            request.onsuccess = () => {
+              if (!request.result) {
+                failure = new Error(
+                  "A local image is missing. Restore an image package or replace the image.",
+                );
+                tx.abort();
+              }
+            };
+          }
+        }
+        deckStore.put(deck, id);
+      } else deckStore.delete(id);
+      const allDecks = deckStore.getAll();
+      allDecks.onsuccess = () => {
+        const referenced = new Set<string>();
+        // Keep all assets if an unrecognized legacy deck cannot be read safely.
+        for (const value of allDecks.result) {
+          const current = migrateDeck(value);
+          if (!current) return;
+          for (const ref of localImageIds(current.cards)) referenced.add(ref);
+        }
+        const cursor = images.openKeyCursor();
+        cursor.onsuccess = () => {
+          const entry = cursor.result;
+          if (!entry) return;
+          if (!referenced.has(String(entry.key))) images.delete(entry.primaryKey);
+          entry.continue();
+        };
+      };
+    };
+  });
 }
