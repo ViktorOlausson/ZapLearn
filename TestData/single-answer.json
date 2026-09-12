@@ -1,0 +1,51 @@
+{
+  "title": "Web Fundamentals – Single-Answer Multiple Choice",
+  "lang": "en",
+  "cards": [
+    {
+      "type": "multiple-choice",
+      "question": "Which protocol normally encrypts web traffic?",
+      "answer": "HTTPS",
+      "options": ["HTTP", "HTTPS", "FTP", "SMTP"],
+      "category": "Networking",
+      "tags": ["https", "security"],
+      "difficulty": 1
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which HTML element represents the main page heading?",
+      "answer": "<h1>",
+      "options": ["<title>", "<header>", "<h1>", "<head>"],
+      "category": "HTML",
+      "tags": ["html", "semantics"],
+      "difficulty": 1
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which CSS declaration enables a flex layout?",
+      "answer": "display: flex",
+      "options": ["layout: flex", "display: flex", "position: flexible", "float: flex"],
+      "category": "CSS",
+      "tags": ["css", "flexbox"],
+      "difficulty": 2
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which JavaScript method parses a JSON string?",
+      "answer": "JSON.parse()",
+      "options": ["JSON.stringify()", "JSON.parse()", "JSON.decode()", "JSON.convert()"],
+      "category": "JavaScript",
+      "tags": ["javascript", "json"],
+      "difficulty": 2
+    },
+    {
+      "type": "multiple-choice",
+      "question": "Which HTTP status code means a resource was not found?",
+      "answer": "404",
+      "options": ["200", "301", "404", "500"],
+      "category": "HTTP",
+      "tags": ["http", "status-codes"],
+      "difficulty": 1
+    }
+  ]
+}

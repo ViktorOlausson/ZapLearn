@@ -6,4 +6,8 @@ Docs/ideer.txt
 Docs/
 Docs/
 TestData
+!TestData/
+TestData/*
+!TestData/single-answer.json
+!TestData/multiple-answers.json
 zaplearn/e2e/fixtures/multiple-answer-deck.json

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 import mixedDeckFixture from "../../../fixtures/mixed-deck.json?raw";
 import multipleChoiceDeckFixture from "../../../fixtures/multiple-choice-deck.json?raw";
@@ -80,7 +82,14 @@ describe("file deck import", () => {
   });
   it("keeps the example multiple-choice and mixed fixtures importable", () => {
     for (const file of ["single-answer.json", "multiple-answers.json"]) {
-      const example = readFileSync(`../TestData/${file}`, "utf8");
+      const example = readFileSync(
+        resolve(
+          dirname(fileURLToPath(import.meta.url)),
+          "../../../../TestData",
+          file,
+        ),
+        "utf8",
+      );
       const parsed = parseDeckFile(example);
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) throw new Error(parsed.errors.join(", "));
