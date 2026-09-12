@@ -1,0 +1,11 @@
+{
+  "title": "Multiple answer test",
+  "cards": [
+    {
+      "type": "multiple-choice",
+      "question": "Which are programming languages?",
+      "answers": ["Python", "JavaScript"],
+      "options": ["Python", "HTML", "JavaScript", "CSS"]
+    }
+  ]
+}

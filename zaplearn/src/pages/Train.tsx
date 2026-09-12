@@ -24,10 +24,13 @@ import { useDeckStore } from "@/features/decks/deckStore";
 import { useProgressStore } from "@/features/progress/progressStore";
 import { Flashcard } from "@/features/train/components/Flashcard";
 import { MultipleChoiceQuestion } from "@/features/train/components/MultipleChoiceQuestion";
-import { shuffleOptions } from "@/features/train/multipleChoice";
+import {
+  shuffleOptions,
+  matchesCorrectAnswers,
+} from "@/features/train/multipleChoice";
 import { buildStudyQueue } from "@/features/train/repetition";
 import { createId } from "@/lib/hash";
-import { isMultipleChoiceCard, type Card } from "@/types/deck";
+import { correctAnswers, isMultipleChoiceCard, type Card } from "@/types/deck";
 import type { ProgressDocument } from "@/types/progress";
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -67,7 +70,10 @@ export function Train() {
   const [complete, setComplete] = useState(false);
   const [grading, setGrading] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<
-    Record<string, string>
+    Record<string, string[]>
+  >({});
+  const [draftSelections, setDraftSelections] = useState<
+    Record<string, string[]>
   >({});
   const [stats, setStats] = useState<SessionStats>(emptyStats);
   const sessionKey = useRef("");
@@ -105,6 +111,7 @@ export function Train() {
     setIndex(0);
     setFlipped(false);
     setSelectedOptions({});
+    setDraftSelections({});
     answeredCardId.current = "";
     setComplete(false);
     setStats(emptyStats);
@@ -142,6 +149,7 @@ export function Train() {
     setIndex(0);
     setFlipped(false);
     setSelectedOptions({});
+    setDraftSelections({});
     answeredCardId.current = "";
     setComplete(false);
     setStats(emptyStats);
@@ -173,20 +181,52 @@ export function Train() {
     setGrading(false);
   }
 
-  async function selectMultipleChoice(option: string) {
+  function selectMultipleChoice(option: string) {
+    if (
+      !card ||
+      !isMultipleChoiceCard(card) ||
+      !card.options.includes(option) ||
+      selectedOption !== undefined ||
+      grading ||
+      answeredCardId.current === card.id
+    )
+      return;
+    if (card.answers !== undefined) {
+      setDraftSelections((current) => {
+        const selected = current[card.id] ?? [];
+        return {
+          ...current,
+          [card.id]: selected.includes(option)
+            ? selected.filter((value) => value !== option)
+            : [...selected, option],
+        };
+      });
+    } else void submitMultipleChoice([option]);
+  }
+
+  async function submitMultipleChoice(selection: string[]) {
     if (
       !card ||
       !isMultipleChoiceCard(card) ||
       !multipleChoiceActive ||
+      selection.length === 0 ||
+      selection.some((option) => !card.options.includes(option)) ||
       selectedOption !== undefined ||
       grading ||
       answeredCardId.current === card.id
     )
       return;
     answeredCardId.current = card.id;
-    setSelectedOptions((current) => ({ ...current, [card.id]: option }));
+    setSelectedOptions((current) => ({
+      ...current,
+      [card.id]: [...selection],
+    }));
     setGrading(true);
-    if (!(await recordAnswer(option === card.answer))) {
+    if (
+      !(await recordAnswer(
+        matchesCorrectAnswers(selection, correctAnswers(card)),
+      ))
+    ) {
       answeredCardId.current = "";
       setSelectedOptions((current) => {
         const next = { ...current };
@@ -413,7 +453,11 @@ export function Train() {
           <MultipleChoiceQuestion
             card={card}
             options={shuffledOptions}
-            selectedOption={selectedOption}
+            selectedOptions={selectedOption ?? draftSelections[card.id] ?? []}
+            submitted={selectedOption !== undefined}
+            onSubmit={() =>
+              void submitMultipleChoice(draftSelections[card.id] ?? [])
+            }
             disabled={grading}
             onSelect={(option) => void selectMultipleChoice(option)}
           />

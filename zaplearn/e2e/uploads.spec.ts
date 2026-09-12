@@ -49,6 +49,7 @@ test("upload, replace, reveal, reload, export and restore local pictures", async
     question.getByRole("img", { name: "Blue round shape" }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Study deck" }).click();
+  await expect(page.getByRole("button", { name: "Show answer" })).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Blue round shape" }),
   ).toHaveAttribute("src", /^blob:/);

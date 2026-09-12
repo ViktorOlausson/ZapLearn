@@ -5,3 +5,9 @@
 Docs/ideer.txt
 Docs/
 Docs/
+TestData
+!TestData/
+TestData/*
+!TestData/single-answer.json
+!TestData/multiple-answers.json
+!TestData/multiple-answer-e2e.json

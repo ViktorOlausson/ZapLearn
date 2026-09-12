@@ -3,7 +3,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { StudyImage } from "@/components/common/StudyImage";
 import { textToSafeLines } from "@/lib/sanitize";
-import type { Card } from "@/types/deck";
+import { correctAnswers, type Card } from "@/types/deck";
 
 function CardText({ value }: { value: string }) {
   return (
@@ -71,7 +71,7 @@ export function Flashcard({
               Answer
             </span>
             <span className="min-w-0 text-xl font-medium leading-relaxed [overflow-wrap:anywhere] sm:text-3xl">
-              <CardText value={card.answer} />
+              <CardText value={correctAnswers(card).join("\n")} />
             </span>
             {flipped && card.answerImage && (
               <StudyImage image={card.answerImage} />

@@ -535,3 +535,85 @@ test("requests storage after import, but does not repeat a denied request for la
     1,
   );
 });
+
+test("multi-answer import, keyboard study, progress persistence, editor and export", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import JSON" }).first().click();
+  await (
+    await chooser
+  ).setFiles(path.resolve("../TestData/multiple-answer-e2e.json"));
+  await expect(
+    page.getByRole("heading", { name: "Multiple answer test" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Study", exact: true }).first().click();
+  await expect(page.getByText("Select all answers that apply.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Submit answer" }),
+  ).toBeDisabled();
+  await page.getByRole("checkbox", { name: /: Python$/ }).focus();
+  await page.keyboard.press("Space");
+  await page.getByRole("checkbox", { name: /: JavaScript$/ }).check();
+  await page.getByRole("button", { name: "Submit answer" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Correct!", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Submit answer" }),
+  ).toBeDisabled();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("multi-answer-mobile.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Finish" }).click();
+  await page.reload();
+  const stored = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("zaplearn");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const values = await new Promise<unknown[]>((resolve, reject) => {
+      const request = db
+        .transaction("progress")
+        .objectStore("progress")
+        .getAll();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return JSON.stringify(values);
+  });
+  expect(stored).toContain('"correctCount":1');
+  expect(stored).toContain('"incorrectCount":0');
+  await page.goto("/");
+  await page.getByRole("link", { name: "Edit Multiple answer test" }).click();
+  await expect(page.getByLabel("Set option 1 as correct")).toBeChecked();
+  await expect(page.getByLabel("Set option 3 as correct")).toBeChecked();
+  await page.getByLabel("Correct-answer mode").selectOption("single");
+  await expect(page.getByText(/Choose which answer to keep/)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByLabel("Option 3", { exact: true }).fill("TypeScript");
+  await expect(page.getByTestId("save-status")).toHaveText("Saved");
+  await page.reload();
+  await expect(page.getByLabel("Option 3", { exact: true })).toHaveValue(
+    "TypeScript",
+  );
+  await expect(page.getByLabel("Set option 3 as correct")).toBeChecked();
+  await page.goto("/manage");
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Backup deck", exact: true }).click();
+  const file = await (await downloading).path();
+  const json = JSON.parse(await readFile(file!, "utf8")) as {
+    cards: Array<{ answers: string[]; answer?: string }>;
+  };
+  expect(json.cards[0].answers).toEqual(["Python", "TypeScript"]);
+  expect(json.cards[0].answer).toBeUndefined();
+});
