@@ -90,6 +90,7 @@ export function Manage() {
         ...deck.cards.flatMap((card) => [
           card.question,
           card.answer,
+          ...("answers" in card ? (card.answers ?? []) : []),
           card.category,
           ...card.tags,
         ]),

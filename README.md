@@ -60,7 +60,7 @@ Expected JSON deck format:
 }
 ```
 
-`title` is required and `cards` must be a non-empty array. Each card requires non-empty `question` and `answer` strings. Optional fields include `lang` (such as `en` or `sv-SE`), `category`, `tags`, and `difficulty` (`1`, `2`, or `3`; defaults to `2`). Tags default to an empty array. Unrecognized properties are stripped.
+`title` is required and `cards` must be a non-empty array. Each card requires a non-empty `question`. Flashcards and single-answer multiple-choice cards require `answer`; multi-answer cards use `answers` instead. Optional fields include `lang` (such as `en` or `sv-SE`), `category`, `tags`, and `difficulty` (`1`, `2`, or `3`; defaults to `2`). Tags default to an empty array. Unrecognized properties are stripped.
 
 Deck and card IDs are optional. Missing deck IDs are generated; missing card IDs are generated deterministically from question and category. Avoid duplicate questions within a category: cards must have distinct IDs. IDs that collide with object-prototype keys, such as `__proto__` or `constructor`, are rejected. An import matching an existing deck ID offers **Update**, preserving progress for matching card IDs.
 
@@ -75,7 +75,16 @@ Cards without `type`, or with `"type": "flashcard"`, are traditional flashcards.
 }
 ```
 
-Provide 2–6 non-empty unique options; the exact answer must appear once. A deck can mix both card types. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
+Provide 2–6 non-empty unique options; the exact answer must appear once. A deck can mix flashcards and both multiple-choice formats. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
+
+### Multiple-choice test data
+
+Ready-to-import decks are in the root `TestData` folder:
+
+- [single-answer.json](TestData/single-answer.json): five web fundamentals questions with one correct answer each.
+- [multiple-answers.json](TestData/multiple-answers.json): five math and shape questions with two or three correct answers each.
+
+Choose **Import JSON** in ZapLearn and select either local `.json` file. Single-answer questions grade immediately; multiple-answer questions wait for **Submit answer**.
 
 ### Images in the JSON deck format
 
@@ -94,7 +103,7 @@ For URL images, `src` and meaningful `alt` text are required and cannot be blank
 
 Use an absolute **HTTPS URL** or a **same-origin root path**, such as `/images/anatomy/deltoid.jpg` or `/data/images/deltoid.jpg`. Root paths always refer to the ZapLearn website, including when a deck comes from another URL; deck-relative paths such as `images/deltoid.jpg` are not supported. URL credentials, protocol-relative URLs (`//host/image.jpg`), HTTP external URLs, `data:`, `blob:`, `file:`, `javascript:`, and other schemes are rejected. Encode spaces in URLs as `%20`. SVG resources may be loaded as ordinary `<img>` images; imported SVG/XML is never injected into the DOM.
 
-`questionImage` appears above the question. `answerImage` appears after revealing a flashcard or choosing a multiple-choice option. Existing grading, shuffled options, keyboard controls, and spaced repetition apply. Browse mode shows images without scoring. Editing image metadata does not change a card's ID or reset its progress.
+`questionImage` appears above the question. `answerImage` appears after revealing a flashcard, choosing a single-answer option, or submitting a multi-answer selection. Existing grading, shuffled options, keyboard controls, and spaced repetition apply. Browse mode shows images without scoring. Editing image metadata does not change a card's ID or reset its progress.
 
 This complete mixed deck includes an ordinary flashcard, an image flashcard, a multiple-choice card, and an image multiple-choice card:
 
@@ -418,65 +427,27 @@ Image URLs and what each image depicts: [PASTE YOUR URLS AND DESCRIPTIONS]
 Mix text, image, flashcard and multiple-choice formats.
 
 ```text
-Create a ZapLearn-compatible study deck using a mixture of traditional flashcards and multiple-choice questions.
+Create a ZapLearn-compatible mixed study deck from the supplied material.
+Return valid JSON only, without Markdown fences or commentary.
+Return an object with title, optional lang, and a non-empty cards array.
+Choose traditional flashcards for free recall, single-answer multiple choice for recognition, and multiple-answer questions only when several answers are genuinely correct. Do not force ordinary single-answer questions into multiple-answer form.
 
-If I supply image URLs, use image-based questions when they improve learning.
+Flashcard: {"question":"...","answer":"..."}
+Single-answer: {"type":"multiple-choice","question":"Capital of France?","answer":"Paris","options":["Paris","London","Berlin"]}
+Multiple-answer: {"type": "multiple-choice", "question": "Which are programming languages?", "answers": ["Python", "JavaScript"], "options": ["Python", "HTML", "JavaScript", "CSS"]}
 
-Use traditional flashcards for concepts best recalled freely. Use multiple-choice questions when recognizing the correct concept among plausible alternatives is useful.
+- Every card requires question. Flashcards require answer. Multiple-choice cards require options and exactly one of answer or answers, never both.
+- Use answer for one correct answer; use answers for at least 2 correct answers.
+- Every correct answer must appear exactly once in options. Use 2–6 unique non-empty options and at least one incorrect option.
+- Use plausible distractors, avoid ambiguity and duplicate questions, and do not mark correct options in their text.
+- Optional questionImage and answerImage use {"src":"USER_SUPPLIED_IMAGE_URL","alt":"Meaningful description","caption":"Optional caption"}. Use only supplied HTTPS URLs or same-origin paths. Never invent image URLs; omit images when no suitable URL is supplied. Answer images appear after reveal/submission.
+- Optional category, tags, and difficulty (1, 2, or 3) are supported. Do not generate IDs unless requested.
+- Preserve requested language and source terminology. Do not invent unsupported facts.
 
-Return valid JSON only. Do not use Markdown fences or include commentary before or after the JSON.
-
-Return one object with a required "title", an optional language code in "lang", and a "cards" array.
-
-Traditional card:
-{
-  "question": "...",
-  "answer": "..."
-}
-
-Multiple-choice card:
-{
-  "type": "multiple-choice",
-  "question": "...",
-  "answer": "Correct answer",
-  "options": [
-    "Correct answer",
-    "Plausible incorrect option",
-    "Plausible incorrect option",
-    "Plausible incorrect option"
-  ]
-}
-
-Optional image fields on either card type:
-{
-  "questionImage": {
-    "src": "USER_SUPPLIED_IMAGE_URL",
-    "alt": "Useful description without unnecessarily revealing the answer"
-  }
-}
-answerImage uses the same structure and appears after reveal/selection. caption is optional.
-
-Requirements:
-- Use only supplied image URLs; never invent, guess, or output placeholder URLs.
-- Preserve supplied image URLs exactly. Use HTTPS or a same-origin root path.
-- Each image needs non-empty src and meaningful alt text without unnecessarily revealing the answer.
-- Every card requires question and answer.
-- Multiple-choice cards also require type and options.
-- For multiple-choice cards, exactly one answer must be correct and answer must occur exactly once in options.
-- Use 3–6 unique options with plausible incorrect alternatives.
-- Avoid ambiguous and duplicate questions.
-- Do not indicate the correct option through formatting, wording, letters, or symbols.
-- category, tags, and difficulty are optional; difficulty must be 1, 2, or 3.
-- Do not generate IDs unless specifically requested; ZapLearn generates stable IDs during import.
-- Keep answers concise but sufficiently complete.
-- Preserve the requested language and important source terminology.
-- Base every card on the supplied material and do not invent unsupported facts.
-
-Requested deck title: [TITLE]
+Requested title: [TITLE]
 Requested language/code: [LANGUAGE AND CODE]
-Desired number of cards: [NUMBER]
-Study material:
-[PASTE STUDY MATERIAL HERE]
+Desired cards: [NUMBER]
+Study material and optional image URLs: [PASTE HERE]
 ```
 
 #### Study image generation
@@ -667,3 +638,84 @@ These are practical frontend protections, not a guarantee of security. Keep depe
 ## License
 
 Copyright 2026 Viktor Olausson. See [LICENSE.md](LICENSE.md) for the project's PolyForm Noncommercial License 1.0.0 and commercial-use terms. Third-party dependencies retain their respective licenses.
+
+
+### Multiple-choice questions with several correct answers
+
+Use `answer` when exactly one answer is correct (the existing format):
+
+```json
+{"type":"multiple-choice","question":"Capital of France?","answer":"Paris","options":["Paris","London","Berlin"]}
+```
+
+Use `answers` when several answers are correct. Do not provide both fields:
+
+```json
+{
+  "type": "multiple-choice",
+  "question": "Which are programming languages?",
+  "answers": [
+    "Python",
+    "JavaScript"
+  ],
+  "options": [
+    "Python",
+    "HTML",
+    "JavaScript",
+    "CSS"
+  ]
+}
+```
+
+Every correct answer must appear exactly once in `options`. Options must be non-empty and unique (2–6). Multi-answer cards require at least 2 unique correct answers and at least one incorrect option, so they need at least 3 options.
+
+Single answer: choose one option → immediate result. Multiple answers: select all that apply → **Submit answer** → result. Only an exact match is correct; missing or extra selections are incorrect. Feedback identifies correct selections, incorrect selections, and missed correct answers. Select **Next** to continue. Checkboxes support Tab and Space; Submit supports keyboard activation. Number shortcuts toggle options.
+
+In the editor, choose **Multiple choice**, then **Correct-answer mode → Multiple correct answers** and mark the correct options. Switching to multiple preserves the current answer; select another before saving. Switching back asks which answer to retain. Invalid drafts cannot save. Card IDs and progress remain stable.
+
+Both formats support question and answer images, mixed decks, JSON backup/import and image packages. Flashcard/browse mode reveals all correct answers. Existing IndexedDB decks need no migration; old `answer` fields remain unchanged. The existing binary spaced-repetition model records each submitted question once.
+
+#### AI prompt: multiple correct answers
+
+```text
+Create a ZapLearn-compatible multiple-answer study deck from the study material I provide.
+
+Return valid JSON only. Do not use Markdown code fences or commentary.
+
+Use this structure:
+{
+  "title": "Deck title",
+  "lang": "en",
+  "cards": [
+    {
+      "type": "multiple-choice",
+      "question": "Which are programming languages?",
+      "answers": [
+        "Python",
+        "JavaScript"
+      ],
+      "options": [
+        "Python",
+        "HTML",
+        "JavaScript",
+        "CSS"
+      ]
+    }
+  ]
+}
+
+Requirements:
+- Every card must have at least 2 correct answers. Use answers; omit answer.
+- Every correct answer must appear exactly once in options.
+- Use 3–6 unique non-empty options, preferably 4–6, with at least one incorrect option.
+- Incorrect options must be plausible distractors. Avoid ambiguous questions and duplicate questions.
+- Do not label correct options or add "(correct)" to their text.
+- Preserve the source language and terminology. Every correct answer must be defensible from the supplied material; do not invent unsupported facts.
+- Do not generate IDs unless requested.
+- Optional category, tags, and difficulty (1, 2, or 3) are supported.
+- Optional questionImage and answerImage require src and alt; caption is optional. Only use supplied HTTPS or same-origin image paths. Never invent image URLs.
+
+Requested deck title: [TITLE]
+Requested language/code: [LANGUAGE AND CODE]
+Study material: [PASTE STUDY MATERIAL HERE]
+```

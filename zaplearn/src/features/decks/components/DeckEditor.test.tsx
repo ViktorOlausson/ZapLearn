@@ -29,6 +29,67 @@ const deck: Deck = {
 };
 
 describe("DeckEditor", () => {
+  it("preserves selections across mode changes, saves and reloads without changing IDs", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const source: Deck = {
+      ...deck,
+      cards: [
+        {
+          ...deck.cards[0],
+          type: "multiple-choice",
+          answer: "Python",
+          options: ["Python", "JavaScript", "HTML"],
+        },
+      ],
+    };
+    const view = render(<DeckEditor deck={source} onSave={onSave} />);
+    await user.selectOptions(
+      screen.getByLabelText("Correct-answer mode"),
+      "multiple",
+    );
+    expect(screen.getByLabelText("Set option 1 as correct")).toBeChecked();
+    await waitFor(() =>
+      expect(
+        screen.getByText("Select at least 2 correct answers"),
+      ).toBeInTheDocument(),
+    );
+    expect(onSave).not.toHaveBeenCalled();
+    await user.click(screen.getByLabelText("Set option 2 as correct"));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const saved = onSave.mock.lastCall?.[0];
+    expect(saved.cards[0]).toMatchObject({
+      id: "card-one",
+      answers: ["Python", "JavaScript"],
+    });
+    expect(saved.cards[0]).not.toHaveProperty("answer");
+    view.unmount();
+    render(<DeckEditor deck={{ ...source, ...saved }} onSave={onSave} />);
+    expect(screen.getByLabelText("Set option 1 as correct")).toBeChecked();
+    expect(screen.getByLabelText("Set option 2 as correct")).toBeChecked();
+    await user.click(screen.getByLabelText("Set option 3 as correct"));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/must contain at least one incorrect/),
+      ).toBeInTheDocument(),
+    );
+    await user.click(screen.getByLabelText("Set option 3 as correct"));
+    await user.selectOptions(
+      screen.getByLabelText("Correct-answer mode"),
+      "single",
+    );
+    expect(screen.getByText(/Choose which answer to keep/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Set option 2 as correct")).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Keep JavaScript" }));
+    await waitFor(() =>
+      expect(onSave.mock.lastCall?.[0].cards[0]).toMatchObject({
+        id: "card-one",
+        answer: "JavaScript",
+      }),
+    );
+    expect(onSave.mock.lastCall?.[0].cards[0]).not.toHaveProperty("answers");
+  });
+
   it("adds and autosaves image metadata, retains a failed preview URL, and removes the image", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);

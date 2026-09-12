@@ -26,6 +26,8 @@ import { IMAGE_ACCEPT, validateImageFile } from "@/features/images/imageFiles";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import {
   DifficultySchema,
+  correctAnswers,
+  validateCorrectAnswers,
   CardImageSchema,
   isMultipleChoiceCard,
   type Card,
@@ -51,6 +53,15 @@ const EditorMultipleChoiceSchema = z
   .object({
     ...EditorCardShape,
     type: z.literal("multiple-choice"),
+    answer: z
+      .string()
+      .trim()
+      .min(1, "Choose exactly one option as the correct answer")
+      .optional(),
+    answers: z
+      .array(z.string().trim().min(1))
+      .min(2, "Select at least 2 correct answers")
+      .optional(),
     options: z
       .array(z.string().trim().min(1, "Option cannot be empty"))
       .min(2, "Add at least 2 answer options")
@@ -64,13 +75,7 @@ const EditorMultipleChoiceSchema = z
         message: "Answer options must be unique",
       });
     }
-    if (card.options.filter((option) => option === card.answer).length !== 1) {
-      context.addIssue({
-        code: "custom",
-        path: ["answer"],
-        message: "Choose exactly one option as the correct answer",
-      });
-    }
+    validateCorrectAnswers(card, context);
   });
 const EditorCardSchema = z.discriminatedUnion("type", [
   EditorFlashcardSchema,
@@ -102,7 +107,7 @@ function baseCard(card: Card) {
   return {
     id: card.id,
     question: card.question,
-    answer: card.answer,
+    answer: correctAnswers(card).join("\n"),
     questionImage: card.questionImage,
     answerImage: card.answerImage,
     category: card.category,
@@ -114,13 +119,14 @@ function baseCard(card: Card) {
 function cardMatches(
   card: Partial<
     Pick<Card, "question" | "answer" | "category" | "tags" | "difficulty">
-  >,
+  > & { answers?: readonly string[] },
   query: string,
 ): boolean {
   if (!query) return true;
   return [
     card.question,
     card.answer,
+    ...(card.answers ?? []),
     card.category,
     ...(card.tags ?? []),
     String(card.difficulty ?? ""),
@@ -160,6 +166,7 @@ export function DeckEditor({
   const [saveState, setSaveState] = useState<
     "saved" | "saving" | "invalid" | "error"
   >("saved");
+  const [resolvingSingle, setResolvingSingle] = useState<string>();
   const [query, setQuery] = useState("");
   const [difficulty, setDifficulty] = useState("all");
   const debouncedQuery = useDebouncedValue(query, 300);
@@ -238,6 +245,51 @@ export function DeckEditor({
     );
   }
 
+  function changeAnswerMode(
+    index: number,
+    multiple: boolean,
+    retained?: string,
+  ) {
+    const card = form.getValues(`cards.${index}`);
+    if (!isMultipleChoiceCard(card)) return;
+    if (
+      !multiple &&
+      card.answers &&
+      card.answers.length > 1 &&
+      retained === undefined
+    ) {
+      setResolvingSingle(card.id);
+      return;
+    }
+    const { answer, answers, ...base } = card;
+    form.setValue(
+      `cards.${index}`,
+      multiple
+        ? { ...base, answers: answers ?? (answer ? [answer] : []) }
+        : { ...base, answer: retained ?? answers?.[0] ?? answer ?? "" },
+      { shouldDirty: true, shouldValidate: true },
+    );
+    setResolvingSingle(undefined);
+  }
+
+  function toggleCorrect(index: number, option: string) {
+    const card = form.getValues(`cards.${index}`);
+    if (!isMultipleChoiceCard(card)) return;
+    if (card.answers !== undefined) {
+      form.setValue(
+        `cards.${index}.answers`,
+        card.answers.includes(option)
+          ? card.answers.filter((answer) => answer !== option)
+          : [...card.answers, option],
+        { shouldDirty: true, shouldValidate: true },
+      );
+    } else
+      form.setValue(`cards.${index}.answer`, option, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+  }
+
   function updateOption(index: number, optionIndex: number, value: string) {
     const card = form.getValues(`cards.${index}`);
     if (!isMultipleChoiceCard(card)) return;
@@ -250,7 +302,13 @@ export function DeckEditor({
       {
         ...card,
         options,
-        answer: card.answer === previous ? value : card.answer,
+        ...(card.answers !== undefined
+          ? {
+              answers: card.answers.map((answer) =>
+                answer === previous ? value : answer,
+              ),
+            }
+          : { answer: card.answer === previous ? value : card.answer }),
       },
       { shouldDirty: true, shouldValidate: true },
     );
@@ -277,7 +335,9 @@ export function DeckEditor({
       {
         ...card,
         options,
-        answer: card.answer === removed ? "" : card.answer,
+        ...(card.answers !== undefined
+          ? { answers: card.answers.filter((answer) => answer !== removed) }
+          : { answer: card.answer === removed ? "" : card.answer }),
       },
       { shouldDirty: true, shouldValidate: true },
     );
@@ -537,6 +597,9 @@ export function DeckEditor({
                     cardType === "multiple-choice" && "options" in draft
                       ? (draft.options ?? [])
                       : [];
+                  const multiple =
+                    "answers" in draft && draft.answers !== undefined;
+                  const selectedCorrect = correctAnswers(draft);
                   const cardErrors = formState.errors.cards?.[index];
                   const optionsError =
                     cardErrors && "options" in cardErrors
@@ -580,34 +643,8 @@ export function DeckEditor({
                             size="icon"
                             onClick={() =>
                               insert(index + 1, {
-                                questionImage: form.getValues(
-                                  `cards.${index}.questionImage`,
-                                ),
-                                answerImage: form.getValues(
-                                  `cards.${index}.answerImage`,
-                                ),
+                                ...form.getValues(`cards.${index}`),
                                 id: createId("card"),
-                                question:
-                                  values.cards?.[index]?.question ??
-                                  fields[index].question,
-                                answer:
-                                  values.cards?.[index]?.answer ??
-                                  fields[index].answer,
-                                category:
-                                  values.cards?.[index]?.category ??
-                                  fields[index].category,
-                                tags:
-                                  values.cards?.[index]?.tags ??
-                                  fields[index].tags,
-                                difficulty:
-                                  values.cards?.[index]?.difficulty ??
-                                  fields[index].difficulty,
-                                ...(cardType === "multiple-choice"
-                                  ? {
-                                      type: "multiple-choice" as const,
-                                      options,
-                                    }
-                                  : { type: "flashcard" as const }),
                               })
                             }
                             aria-label={`Duplicate card ${index + 1}`}
@@ -700,8 +737,58 @@ export function DeckEditor({
                               Answer options
                             </legend>
                             <p className="mb-3 text-sm text-muted-foreground">
-                              Add 2–6 options and select the one correct answer.
+                              {multiple
+                                ? "Add 3–6 options. Select at least 2 correct answers and leave at least one incorrect option."
+                                : "Add 2–6 options and select the one correct answer."}
                             </p>
+                            <label className="mb-3 block text-sm font-medium">
+                              Correct-answer mode
+                              <select
+                                className="mt-1 block w-full rounded-md border bg-background p-2"
+                                value={multiple ? "multiple" : "single"}
+                                onChange={(event) =>
+                                  changeAnswerMode(
+                                    index,
+                                    event.target.value === "multiple",
+                                  )
+                                }
+                              >
+                                <option value="single">
+                                  One correct answer
+                                </option>
+                                <option value="multiple">
+                                  Multiple correct answers
+                                </option>
+                              </select>
+                            </label>
+                            {resolvingSingle === draft.id && (
+                              <div className="mb-3 rounded-lg border p-3">
+                                <p>
+                                  Choose which answer to keep. The other answers
+                                  will become incorrect options.
+                                </p>
+                                {selectedCorrect.map((answer) => (
+                                  <Button
+                                    key={answer}
+                                    type="button"
+                                    variant="outline"
+                                    className="m-1"
+                                    onClick={() =>
+                                      changeAnswerMode(index, false, answer)
+                                    }
+                                  >
+                                    Keep {answer}
+                                  </Button>
+                                ))}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => setResolvingSingle(undefined)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            )}
                             <div className="grid gap-2">
                               {options.map((option, optionIndex) => (
                                 <div
@@ -709,21 +796,15 @@ export function DeckEditor({
                                   key={`${fields[index].fieldId}-option-${optionIndex}`}
                                 >
                                   <input
-                                    type="radio"
+                                    type={multiple ? "checkbox" : "radio"}
                                     name={`correct-option-${fields[index].fieldId}`}
                                     checked={
-                                      Boolean(option) && draft.answer === option
+                                      Boolean(option) &&
+                                      selectedCorrect.includes(option)
                                     }
                                     disabled={!option.trim()}
                                     onChange={() =>
-                                      form.setValue(
-                                        `cards.${index}.answer`,
-                                        option,
-                                        {
-                                          shouldDirty: true,
-                                          shouldValidate: true,
-                                        },
-                                      )
+                                      toggleCorrect(index, option)
                                     }
                                     aria-label={`Set option ${optionIndex + 1} as correct`}
                                     className="size-4 shrink-0 accent-primary"
@@ -742,7 +823,7 @@ export function DeckEditor({
                                     className="min-w-0"
                                   />
                                   {Boolean(option) &&
-                                    draft.answer === option && (
+                                    selectedCorrect.includes(option) && (
                                       <Badge
                                         className="hidden gap-1 sm:inline-flex"
                                         variant="secondary"
@@ -775,7 +856,10 @@ export function DeckEditor({
                               <Plus /> Add option
                             </Button>
                             <p className="mt-2 text-sm text-destructive">
-                              {optionsError ??
+                              {(cardErrors && "answers" in cardErrors
+                                ? fieldErrorMessage(cardErrors.answers)
+                                : undefined) ??
+                                optionsError ??
                                 formState.errors.cards?.[index]?.answer
                                   ?.message}
                             </p>

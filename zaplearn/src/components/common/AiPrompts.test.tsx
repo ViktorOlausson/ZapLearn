@@ -6,7 +6,7 @@ import { aiPromptGroups } from "@/content/aiPrompts";
 
 afterEach(() => vi.restoreAllMocks());
 describe("AI prompt examples", () => {
-  it("keeps README examples synchronized with all nine copyable prompts", () => {
+  it("keeps README examples synchronized with all copyable prompts", () => {
     const readme = readFileSync("../README.md", "utf8").replace(/\r\n/g, "\n");
     for (const group of aiPromptGroups)
       for (const prompt of group.prompts) expect(readme).toContain(prompt.text);
@@ -35,7 +35,9 @@ describe("AI prompt examples", () => {
         ).toBeInTheDocument();
       }
     }
-    expect(writeText).toHaveBeenCalledTimes(9);
+    expect(writeText).toHaveBeenCalledTimes(
+      aiPromptGroups.reduce((count, group) => count + group.prompts.length, 0),
+    );
   });
   it.each([
     undefined,

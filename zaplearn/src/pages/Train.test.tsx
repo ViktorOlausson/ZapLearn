@@ -72,6 +72,124 @@ describe("training controls", () => {
     mocks.load.mockReset().mockResolvedValue(mocks.document);
   });
 
+  it.each([
+    [["Python", "JavaScript"], true],
+    [["Python"], false],
+    [["Python", "JavaScript", "HTML"], false],
+    [["HTML", "JavaScript"], false],
+  ])(
+    "grades the complete selection %j once as %s",
+    async (selection, correct) => {
+      const user = userEvent.setup();
+      mocks.deck.cards = ["first", "second"].map((id) => ({
+        id,
+        type: "multiple-choice",
+        question: `Languages ${id}?`,
+        answers: ["Python", "JavaScript"],
+        options: ["Python", "HTML", "JavaScript", "CSS"],
+        tags: [],
+        difficulty: 2,
+        questionImage: { src: "/q.png", alt: "Question diagram" },
+        answerImage: { src: "/a.png", alt: "Answer diagram" },
+      }));
+      render(
+        <MemoryRouter initialEntries={["/train/deck-one"]}>
+          <Routes>
+            <Route path="/train/:deckId" element={<Train />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await screen.findByText("Languages first?");
+      const order = screen
+        .getAllByRole("checkbox")
+        .map((input) => input.getAttribute("aria-label"));
+      expect(
+        screen.getByRole("button", { name: "Submit answer" }),
+      ).toBeDisabled();
+      expect(screen.queryByAltText("Answer diagram")).not.toBeInTheDocument();
+      for (const option of selection)
+        await user.click(
+          screen.getByRole("checkbox", { name: new RegExp(`: ${option}$`) }),
+        );
+      expect(mocks.grade).not.toHaveBeenCalled();
+      expect(
+        screen
+          .getAllByRole("checkbox")
+          .map((input) => input.getAttribute("aria-label")),
+      ).toEqual(order);
+      const submit = screen.getByRole("button", { name: "Submit answer" });
+      await user.dblClick(submit);
+      expect(mocks.grade).toHaveBeenCalledExactlyOnceWith(
+        "deck-one",
+        "first",
+        correct,
+      );
+      expect(submit).toBeDisabled();
+      expect(
+        screen.getByText(correct ? "Correct!" : "Incorrect."),
+      ).toBeInTheDocument();
+      expect(screen.getByAltText("Answer diagram")).toBeInTheDocument();
+      for (const checkbox of screen.getAllByRole("checkbox"))
+        expect(checkbox).toBeDisabled();
+      expect(screen.getAllByText("✓ Correct selected").length).toBeGreaterThan(
+        0,
+      );
+      if (!selection.includes("Python") || !selection.includes("JavaScript"))
+        expect(screen.getByText("✓ Missed correct answer")).toBeInTheDocument();
+      if (selection.includes("HTML"))
+        expect(screen.getByText("✕ Incorrect selected")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Next" }));
+      expect(screen.getByText("Languages second?")).toBeInTheDocument();
+      for (const checkbox of screen.getAllByRole("checkbox"))
+        expect(checkbox).not.toBeChecked();
+      expect(
+        screen.getByRole("button", { name: "Submit answer" }),
+      ).toBeDisabled();
+    },
+  );
+
+  it("toggles with Space and reveals all answers in flashcard mode", async () => {
+    const user = userEvent.setup();
+    mocks.deck.cards = [
+      {
+        id: "multi",
+        type: "multiple-choice",
+        question: "Languages?",
+        answers: ["Python", "JavaScript"],
+        options: ["Python", "JavaScript", "HTML"],
+        tags: [],
+        difficulty: 2,
+      },
+    ];
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/train/deck-one"]}>
+        <Routes>
+          <Route path="/train/:deckId" element={<Train />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const checkbox = await screen.findByRole("checkbox", { name: /: Python$/ });
+    checkbox.focus();
+    await user.keyboard(" ");
+    expect(checkbox).toBeChecked();
+    await user.keyboard(" ");
+    expect(checkbox).not.toBeChecked();
+    expect(mocks.grade).not.toHaveBeenCalled();
+    unmount();
+    render(
+      <MemoryRouter initialEntries={["/train/deck-one?format=flashcards"]}>
+        <Routes>
+          <Route path="/train/:deckId" element={<Train />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Show answer" }),
+    );
+    expect(screen.getByText("Python")).toBeVisible();
+    expect(screen.getByText("JavaScript")).toBeVisible();
+  });
+
   it("flips with the keyboard and records a correct answer", async () => {
     const user = userEvent.setup();
     render(
