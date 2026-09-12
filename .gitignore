@@ -10,4 +10,4 @@ TestData
 TestData/*
 !TestData/single-answer.json
 !TestData/multiple-answers.json
-zaplearn/e2e/fixtures/multiple-answer-deck.json
+!TestData/multiple-answer-e2e.json

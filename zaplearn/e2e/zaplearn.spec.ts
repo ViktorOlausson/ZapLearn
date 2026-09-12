@@ -543,7 +543,7 @@ test("multi-answer import, keyboard study, progress persistence, editor and expo
   await page.getByRole("button", { name: "Import JSON" }).first().click();
   await (
     await chooser
-  ).setFiles(path.resolve("e2e/fixtures/multiple-answer-deck.json"));
+  ).setFiles(path.resolve("../TestData/multiple-answer-e2e.json"));
   await expect(
     page.getByRole("heading", { name: "Multiple answer test" }),
   ).toBeVisible();
