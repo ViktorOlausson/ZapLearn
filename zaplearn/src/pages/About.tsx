@@ -69,12 +69,12 @@ export function About() {
         </pre>
         <p className="leading-relaxed text-muted-foreground">
           questionImage appears with the question; answerImage appears with the
-          revealed answer, or after selecting a multiple-choice option. Each URL
-          image requires src (an HTTPS URL or a path on this site such as
-          /images/exercise.jpg) and meaningful alt text describing it for
-          accessibility. Avoid unnecessarily revealing the answer in alt text.
-          The caption is optional. Paths refer to this website, not the deck
-          URL.
+          revealed answer, after selecting a single-answer option, or after
+          submitting multiple answers. Each URL image requires src (an HTTPS URL
+          or a path on this site such as /images/exercise.jpg) and meaningful
+          alt text describing it for accessibility. Avoid unnecessarily
+          revealing the answer in alt text. The caption is optional. Paths refer
+          to this website, not the deck URL.
         </p>
         <p className="leading-relaxed text-muted-foreground">
           Upload JPEG, PNG, WebP, or GIF images directly from your device (up to
@@ -119,6 +119,30 @@ export function About() {
           address and may receive cookies according to browser policy. Study
           images send no referrer. ZapLearn does not automatically download
           remote images for offline storage.
+        </p>
+      </section>
+
+      <section className="space-y-3 rounded-xl border bg-card p-6">
+        <h2 className="text-xl font-semibold">Multiple-choice questions</h2>
+        <p>
+          Practice traditional flashcards, questions with one correct answer, or
+          questions with several correct answers. All three formats support
+          images.
+        </p>
+        <p>
+          Single answer: choose one option → immediate result. Multiple answers:
+          select all that apply → Submit answer → result.
+        </p>
+        <p>
+          For example, “Which are programming languages?” could offer Python,
+          HTML, JavaScript, and CSS. Select Python and JavaScript, then submit.
+          You must select all correct options and no incorrect ones. Feedback
+          shows any missed or incorrect selections.
+        </p>
+        <p>
+          In the editor, choose Multiple choice and set Correct-answer mode to
+          Multiple correct answers. Mark at least two correct options and leave
+          at least one incorrect option.
         </p>
       </section>
 

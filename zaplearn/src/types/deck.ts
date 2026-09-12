@@ -70,11 +70,58 @@ function flashcardSchema<T extends z.ZodType>(id: T) {
     .strip();
 }
 
+export function validateCorrectAnswers(
+  card: { answer?: string; answers?: string[]; options: string[] },
+  context: z.RefinementCtx,
+) {
+  const issue = (path: string, message: string) =>
+    context.addIssue({ code: "custom", path: [path], message });
+  if ((card.answer !== undefined) === (card.answers !== undefined)) {
+    issue("answers", "Provide exactly one of answer or answers");
+    return;
+  }
+  if (card.answers !== undefined) {
+    if (new Set(card.answers).size !== card.answers.length)
+      issue(
+        "answers",
+        "Multiple-answer questions cannot contain duplicate correct answers",
+      );
+    for (const answer of card.answers) {
+      if (card.options.filter((option) => option === answer).length !== 1)
+        issue(
+          "answers",
+          `Correct answer "${answer}" must appear exactly once in options`,
+        );
+    }
+    if (card.options.every((option) => card.answers?.includes(option)))
+      issue(
+        "answers",
+        "A multiple-answer question must contain at least one incorrect option",
+      );
+  } else if (
+    card.options.filter((option) => option === card.answer).length !== 1
+  ) {
+    issue("answer", "The correct answer must appear exactly once in options");
+  }
+}
+
+export function correctAnswers(card: {
+  answer?: string;
+  answers?: readonly string[];
+}): readonly string[] {
+  return card.answers ?? (card.answer === undefined ? [] : [card.answer]);
+}
+
 function multipleChoiceCardSchema<T extends z.ZodType>(id: T) {
   return z
     .object({
       ...cardShape(id),
       type: z.literal("multiple-choice"),
+      answer: requiredText("Answer").optional(),
+      answers: z
+        .array(requiredText("Correct answer"))
+        .min(2, "Select at least 2 correct answers")
+        .optional(),
       options: z
         .array(requiredText("Option"), {
           error: "Multiple-choice options are required",
@@ -91,15 +138,7 @@ function multipleChoiceCardSchema<T extends z.ZodType>(id: T) {
           message: "Multiple-choice options contain duplicates",
         });
       }
-      if (
-        card.options.filter((option) => option === card.answer).length !== 1
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["answer"],
-          message: "The correct answer must appear exactly once in options",
-        });
-      }
+      validateCorrectAnswers(card, context);
     });
 }
 

@@ -25,3 +25,14 @@ export function shuffleOptions(
   }
   return shuffled;
 }
+
+export function matchesCorrectAnswers(
+  selected: readonly string[],
+  correct: readonly string[],
+): boolean {
+  const selection = new Set(selected);
+  return (
+    selection.size === correct.length &&
+    correct.every((answer) => selection.has(answer))
+  );
+}
