@@ -215,6 +215,9 @@ export function Manage() {
                   {stats.incorrect} incorrect
                 </CardContent>
                 <CardFooter className="flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline">
+                    <Link to={`/update/${deck.id}`}>Update deck from JSON</Link>
+                  </Button>
                   {deck.cards.length > 0 ? (
                     <Button asChild size="sm">
                       <Link to={`/train/${deck.id}`}>

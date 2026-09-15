@@ -141,11 +141,46 @@ export function About() {
         </p>
         <p>
           In the editor, choose Multiple choice and set Correct-answer mode to
-          Multiple correct answers. Mark at least two correct options and leave
-          at least one incorrect option.
+          Multiple correct answers. Mark the correct options and leave at least
+          one incorrect option.
         </p>
       </section>
 
+      <section className="space-y-3 rounded-xl border bg-card p-6">
+        <h2 className="text-xl font-semibold">Large multiple choice</h2>
+        <p>
+          Questions can have 2–50 options, including 20+ options and many
+          correct answers. Use as many as the subject needs. Scroll naturally,
+          clear your selection before submitting, and use Bulk add options in
+          the editor to paste one option per line.
+        </p>
+        <h2 className="text-xl font-semibold">Updating decks</h2>
+        <ol className="list-decimal pl-5 space-y-2">
+          <li>
+            Export your existing deck and keep a backup (with images when
+            needed).
+          </li>
+          <li>
+            Ask an AI tool to add or improve questions while preserving existing
+            IDs.
+          </li>
+          <li>
+            In Manage decks, choose Update deck from JSON and paste or upload
+            the result.
+          </li>
+          <li>Preview the changes and resolve any errors.</li>
+          <li>
+            Apply the merge. Omitted cards and existing learning progress are
+            preserved.
+          </li>
+        </ol>
+        <p>
+          Import creates a new deck. Merge updates matches and adds new cards.
+          Replace uses the incoming collection and requires confirmation before
+          removing cards. Download the offered backup before applying; there is
+          no automatic undo.
+        </p>
+      </section>
       <AiPrompts />
 
       <section className="space-y-3 rounded-xl border bg-card p-6">

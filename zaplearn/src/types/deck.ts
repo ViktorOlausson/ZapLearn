@@ -6,6 +6,7 @@ import { stableHash } from "@/lib/hash";
 import { isSafeImageSource } from "@/lib/imageSource";
 
 export const SCHEMA_VERSION = 1;
+export const MAX_MULTIPLE_CHOICE_OPTIONS = 50;
 
 const requiredText = (label: string) =>
   z
@@ -120,14 +121,17 @@ function multipleChoiceCardSchema<T extends z.ZodType>(id: T) {
       answer: requiredText("Answer").optional(),
       answers: z
         .array(requiredText("Correct answer"))
-        .min(2, "Select at least 2 correct answers")
+        .min(1, "Select at least 1 correct answer")
         .optional(),
       options: z
         .array(requiredText("Option"), {
           error: "Multiple-choice options are required",
         })
         .min(2, "Multiple-choice cards require at least 2 options")
-        .max(6, "Multiple-choice cards support at most 6 options"),
+        .max(
+          MAX_MULTIPLE_CHOICE_OPTIONS,
+          `Multiple-choice cards support at most ${MAX_MULTIPLE_CHOICE_OPTIONS} options`,
+        ),
     })
     .strip()
     .superRefine((card, context) => {

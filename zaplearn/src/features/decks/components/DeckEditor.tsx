@@ -4,6 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Check, Copy, Plus, Search, Trash2, X } from "lucide-react";
 import { z } from "zod";
 
+import { BulkOptions } from "@/features/decks/components/BulkOptions";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,6 +27,7 @@ import {
 import { IMAGE_ACCEPT, validateImageFile } from "@/features/images/imageFiles";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import {
+  MAX_MULTIPLE_CHOICE_OPTIONS,
   DifficultySchema,
   correctAnswers,
   validateCorrectAnswers,
@@ -60,12 +63,15 @@ const EditorMultipleChoiceSchema = z
       .optional(),
     answers: z
       .array(z.string().trim().min(1))
-      .min(2, "Select at least 2 correct answers")
+      .min(1, "Select at least 1 correct answer")
       .optional(),
     options: z
       .array(z.string().trim().min(1, "Option cannot be empty"))
       .min(2, "Add at least 2 answer options")
-      .max(6, "Use no more than 6 answer options"),
+      .max(
+        MAX_MULTIPLE_CHOICE_OPTIONS,
+        `Use no more than ${MAX_MULTIPLE_CHOICE_OPTIONS} answer options`,
+      ),
   })
   .superRefine((card, context) => {
     if (new Set(card.options).size !== card.options.length) {
@@ -316,7 +322,11 @@ export function DeckEditor({
 
   function addOption(index: number) {
     const card = form.getValues(`cards.${index}`);
-    if (!isMultipleChoiceCard(card) || card.options.length >= 6) return;
+    if (
+      !isMultipleChoiceCard(card) ||
+      card.options.length >= MAX_MULTIPLE_CHOICE_OPTIONS
+    )
+      return;
     form.setValue(`cards.${index}.options`, [...card.options, ""], {
       shouldDirty: true,
       shouldValidate: true,
@@ -357,7 +367,7 @@ export function DeckEditor({
     setUploadError("");
     const errors: string[] = [];
     const uploads: Blob[] = [];
-    if (files.length + fields.length > 50) {
+    if (files.length > 50) {
       setUploadError("Choose at most 50 images per batch.");
       setUploading(false);
       return;
@@ -738,8 +748,8 @@ export function DeckEditor({
                             </legend>
                             <p className="mb-3 text-sm text-muted-foreground">
                               {multiple
-                                ? "Add 3–6 options. Select at least 2 correct answers and leave at least one incorrect option."
-                                : "Add 2–6 options and select the one correct answer."}
+                                ? `Add 2–${MAX_MULTIPLE_CHOICE_OPTIONS} options. Select correct answers and leave at least one incorrect option.`
+                                : `Add 2–${MAX_MULTIPLE_CHOICE_OPTIONS} options and select the one correct answer.`}
                             </p>
                             <label className="mb-3 block text-sm font-medium">
                               Correct-answer mode
@@ -807,9 +817,9 @@ export function DeckEditor({
                                       toggleCorrect(index, option)
                                     }
                                     aria-label={`Set option ${optionIndex + 1} as correct`}
-                                    className="size-4 shrink-0 accent-primary"
+                                    className="size-5 shrink-0 accent-primary"
                                   />
-                                  <Input
+                                  <Textarea
                                     value={option}
                                     onChange={(event) =>
                                       updateOption(
@@ -850,11 +860,23 @@ export function DeckEditor({
                               size="sm"
                               variant="outline"
                               className="mt-3"
-                              disabled={options.length >= 6}
+                              disabled={
+                                options.length >= MAX_MULTIPLE_CHOICE_OPTIONS
+                              }
                               onClick={() => addOption(index)}
                             >
                               <Plus /> Add option
                             </Button>
+                            <BulkOptions
+                              options={options}
+                              onAdd={(added) =>
+                                form.setValue(
+                                  `cards.${index}.options`,
+                                  [...options, ...added],
+                                  { shouldDirty: true, shouldValidate: true },
+                                )
+                              }
+                            />
                             <p className="mt-2 text-sm text-destructive">
                               {(cardErrors && "answers" in cardErrors
                                 ? fieldErrorMessage(cardErrors.answers)

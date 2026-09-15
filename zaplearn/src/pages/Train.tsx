@@ -454,6 +454,13 @@ export function Train() {
             card={card}
             options={shuffledOptions}
             selectedOptions={selectedOption ?? draftSelections[card.id] ?? []}
+            onClear={() => {
+              if (selectedOption === undefined && !grading)
+                setDraftSelections((current) => ({
+                  ...current,
+                  [card.id]: [],
+                }));
+            }}
             submitted={selectedOption !== undefined}
             onSubmit={() =>
               void submitMultipleChoice(draftSelections[card.id] ?? [])

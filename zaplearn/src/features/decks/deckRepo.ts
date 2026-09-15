@@ -59,6 +59,7 @@ export async function getDeck(id: string): Promise<Deck | null> {
 export async function saveDeck(
   deck: Deck,
   assets: ImageAsset[] = [],
+  expected?: Deck,
 ): Promise<void> {
   const validated = DeckSchema.parse(deck);
   const provided = new Map(assets.map((asset) => [asset.id, asset]));
@@ -66,7 +67,7 @@ export async function saveDeck(
     const draft = getDraftImage(id);
     if (draft) provided.set(id, draft);
   }
-  await commitDeck(validated.id, validated, provided);
+  await commitDeck(validated.id, validated, provided, expected);
 }
 
 export async function deleteDeck(id: string): Promise<void> {
@@ -79,6 +80,7 @@ async function commitDeck(
   id: string,
   deck?: Deck,
   provided = new Map<string, ImageAsset>(),
+  expected?: Deck,
 ): Promise<void> {
   await decks.ready();
   await imageAssets.ready();
@@ -102,6 +104,20 @@ async function commitDeck(
       };
       const deckStore = tx.objectStore("decks");
       const images = tx.objectStore("images");
+      if (expected) {
+        const current = deckStore.get(id);
+        current.onsuccess = () => {
+          if (
+            JSON.stringify(migrateDeck(current.result)) !==
+            JSON.stringify(DeckSchema.parse(expected))
+          ) {
+            failure = new Error(
+              "The deck changed after preview. Create a new preview before applying.",
+            );
+            tx.abort();
+          }
+        };
+      }
       if (deck) {
         for (const assetId of localImageIds(deck.cards)) {
           const asset = provided.get(assetId);
@@ -133,7 +149,8 @@ async function commitDeck(
         cursor.onsuccess = () => {
           const entry = cursor.result;
           if (!entry) return;
-          if (!referenced.has(String(entry.key))) images.delete(entry.primaryKey);
+          if (!referenced.has(String(entry.key)))
+            images.delete(entry.primaryKey);
           entry.continue();
         };
       };
