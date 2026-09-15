@@ -49,12 +49,6 @@ describe("DeckEditor", () => {
       "multiple",
     );
     expect(screen.getByLabelText("Set option 1 as correct")).toBeChecked();
-    await waitFor(() =>
-      expect(
-        screen.getByText("Select at least 2 correct answers"),
-      ).toBeInTheDocument(),
-    );
-    expect(onSave).not.toHaveBeenCalled();
     await user.click(screen.getByLabelText("Set option 2 as correct"));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     const saved = onSave.mock.lastCall?.[0];

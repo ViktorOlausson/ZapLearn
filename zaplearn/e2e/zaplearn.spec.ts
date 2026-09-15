@@ -5,6 +5,198 @@ import { expect, test } from "@playwright/test";
 
 const fixture = path.resolve("fixtures/example-deck.json");
 
+test("mass merge previews two changes and five additions, preserves progress and trains 25 options on mobile", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  const cards = Array.from({ length: 10 }, (_, i) => ({
+    id: `merge-card-${i}`,
+    question: `Original question ${i}`,
+    answer: `Answer ${i}`,
+  }));
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Import JSON" }).first().click();
+  await (
+    await chooser
+  ).setFiles({
+    name: "merge.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({ id: "merge-deck", title: "Mass merge", cards }),
+    ),
+  });
+  await expect(
+    page.getByRole("heading", { name: "Mass merge", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Study", exact: true }).first().click();
+  await page.getByRole("button", { name: "Show answer" }).click();
+  await page.getByRole("button", { name: "Correct", exact: true }).click();
+  async function stored(store: string) {
+    return page.evaluate(async (name) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const r = indexedDB.open("zaplearn");
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      const value = await new Promise<unknown>((resolve, reject) => {
+        const r = db.transaction(name).objectStore(name).get("merge-deck");
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+      });
+      db.close();
+      return value;
+    }, store);
+  }
+  await page.goto("/manage");
+  const progress = await stored("progress");
+  await page.getByRole("link", { name: "Update deck from JSON" }).click();
+  const options = Array.from({ length: 25 }, (_, i) => `Choice ${i + 1}`);
+  await page.getByLabel("Update JSON", { exact: true }).fill(
+    JSON.stringify({
+      cards: [
+        {
+          id: cards[0].id,
+          question: "Large updated question",
+          type: "multiple-choice",
+          options,
+          answers: options.slice(0, 15),
+        },
+        { id: cards[1].id, answer: "Improved answer" },
+        ...Array.from({ length: 5 }, (_, i) => ({
+          question: `New question ${i}`,
+          answer: `New answer ${i}`,
+        })),
+      ],
+    }),
+  );
+  await page.getByRole("button", { name: "Preview update" }).click();
+  await expect(
+    page.getByText(
+      "5 new cards · 2 cards updated · 8 cards unchanged · 0 cards deleted",
+    ),
+  ).toBeVisible();
+  expect(((await stored("decks")) as { cards: unknown[] }).cards).toHaveLength(
+    10,
+  );
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download backup", exact: true })
+    .click();
+  const backupPath = await (await download).path();
+  expect(JSON.parse(await readFile(backupPath!, "utf8")).cards).toHaveLength(
+    10,
+  );
+  await page.getByRole("button", { name: "Apply update", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Update applied. 15 cards",
+  );
+  await page.reload();
+  const saved = (await stored("decks")) as {
+    cards: { id: string; question: string }[];
+  };
+  expect(saved.cards).toHaveLength(15);
+  expect(saved.cards[9].question).toBe(cards[9].question);
+  expect(await stored("progress")).toEqual(progress);
+  await page
+    .getByLabel("Update JSON", { exact: true })
+    .fill(JSON.stringify({ cards: [] }));
+  await page.getByRole("button", { name: "Preview update" }).click();
+  await expect(page.getByText("No changes found.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Apply update", exact: true }),
+  ).toHaveCount(0);
+  await page.goto("/edit/merge-deck");
+  await expect(page.getByLabel("Option 25", { exact: true })).toHaveValue(
+    "Choice 25",
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("large-editor-mobile.png"),
+    fullPage: true,
+  });
+  await page.goto("/train/merge-deck?format=multiple-choice");
+  await page.getByRole("button", { name: "Review anyway" }).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(25);
+  const order = await page
+    .getByRole("checkbox")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("aria-label")),
+    );
+  await page.getByRole("checkbox", { name: /: Choice 1$/ }).check();
+  await expect(page.getByText("1 selected", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear selection" }).click();
+  await expect(page.getByText("0 selected", { exact: true })).toBeVisible();
+  for (let i = 1; i <= 15; i++)
+    await page
+      .getByRole("checkbox", { name: new RegExp(`: Choice ${i}$`) })
+      .check();
+  expect(
+    await page
+      .getByRole("checkbox")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute("aria-label")),
+      ),
+  ).toEqual(order);
+  await page.getByRole("button", { name: "Submit answer" }).click();
+  await expect(page.getByText("Correct!", { exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("large-study-mobile.png"),
+    fullPage: true,
+  });
+  await page.goto("/update/merge-deck");
+  await page
+    .getByLabel("Upload update JSON (maximum 2 MB)")
+    .setInputFiles({
+      name: "invalid.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(
+        JSON.stringify({
+          updates: [{ cardId: cards[0].id, answer: "Missing option" }],
+        }),
+      ),
+    });
+  await page.getByRole("button", { name: "Preview update" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "must appear exactly once",
+  );
+  expect(((await stored("decks")) as { cards: unknown[] }).cards).toHaveLength(
+    15,
+  );
+  await page
+    .getByLabel("Update JSON", { exact: true })
+    .fill(JSON.stringify({ cards: [{ id: cards[0].id }] }));
+  await page.getByLabel("Update mode").selectOption("replace");
+  await page.getByRole("button", { name: "Preview update" }).click();
+  await expect(
+    page.getByRole("button", { name: "Apply update", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("checkbox", { name: /14 existing cards will be removed/ })
+    .check();
+  await page.getByRole("button", { name: "Apply update", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Update applied. 1 cards",
+  );
+  await page.reload();
+  expect(((await stored("decks")) as { cards: unknown[] }).cards).toHaveLength(
+    1,
+  );
+});
+
 test("import, edit, study, persist, export, reset, and delete", async ({
   page,
 }) => {
@@ -536,7 +728,9 @@ test("requests storage after import, but does not repeat a denied request for la
   );
 });
 
-test("multi-answer import, keyboard study, progress persistence, editor and export", async ({ page }, testInfo) => {
+test("multi-answer import, keyboard study, progress persistence, editor and export", async ({
+  page,
+}, testInfo) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/");
   const chooser = page.waitForEvent("filechooser");

@@ -19,6 +19,12 @@ const About = lazy(() =>
   import("@/pages/About").then((module) => ({ default: module.About })),
 );
 
+const UpdateDeck = lazy(() =>
+  import("@/pages/UpdateDeck").then((module) => ({
+    default: module.UpdateDeck,
+  })),
+);
+
 function Page({ children }: { children: ReactNode }) {
   return (
     <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
@@ -68,6 +74,14 @@ export function App() {
           element={
             <Page>
               <About />
+            </Page>
+          }
+        />
+        <Route
+          path="/update/:deckId"
+          element={
+            <Page>
+              <UpdateDeck />
             </Page>
           }
         />
