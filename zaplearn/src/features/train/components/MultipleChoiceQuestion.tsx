@@ -12,6 +12,7 @@ export function MultipleChoiceQuestion({
   selectedOptions,
   submitted,
   onSubmit,
+  onClear,
   disabled = false,
   onSelect,
 }: {
@@ -20,6 +21,7 @@ export function MultipleChoiceQuestion({
   selectedOptions: readonly string[];
   submitted: boolean;
   onSubmit: () => void;
+  onClear?: () => void;
   disabled?: boolean;
   onSelect: (option: string) => void;
 }) {
@@ -122,6 +124,18 @@ export function MultipleChoiceQuestion({
           );
         })}
       </div>
+      {multiple && (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p aria-live="polite">{selectedOptions.length} selected</p>
+          <Button
+            variant="outline"
+            disabled={answered || disabled || !selectedOptions.length}
+            onClick={onClear}
+          >
+            Clear selection
+          </Button>
+        </div>
+      )}
       {multiple && (
         <Button
           className="mt-5 w-full sm:w-auto"

@@ -73,7 +73,7 @@ Cards without `type`, or with `"type": "flashcard"`, are traditional flashcards.
 }
 ```
 
-Provide 2–6 non-empty unique options; the exact answer must appear once. A deck can mix flashcards and both multiple-choice formats. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
+Provide 2–50 non-empty unique options; the exact answer must appear once. A deck can mix flashcards and both multiple-choice formats. Examples: [flashcards](zaplearn/fixtures/example-deck.json), [multiple choice](zaplearn/fixtures/multiple-choice-deck.json), and [mixed deck](zaplearn/fixtures/mixed-deck.json).
 
 ### Multiple-choice test data
 
@@ -399,7 +399,7 @@ Requirements:
 - title is required; cards must be a non-empty array.
 - Every card requires type: "multiple-choice", question, answer, and options.
 - Every card must have exactly one correct answer. answer is that answer and must appear exactly once in options.
-- Prefer 4 options when good alternatives exist. Use at least 3 if 4 reasonable alternatives cannot be created, and no more than 6.
+- Prefer 4 options when good alternatives exist. Use at least 3 if 4 reasonable alternatives cannot be created, and no more than 50.
 - Options must be unique. Incorrect answers must be plausible distractors, not obviously ridiculous or unrelated.
 - Avoid ambiguous questions where several options could reasonably be correct.
 - Do not always position the correct answer first. Do not label it or add "(correct)" or similar text.
@@ -435,8 +435,8 @@ Single-answer: {"type":"multiple-choice","question":"Capital of France?","answer
 Multiple-answer: {"type": "multiple-choice", "question": "Which are programming languages?", "answers": ["Python", "JavaScript"], "options": ["Python", "HTML", "JavaScript", "CSS"]}
 
 - Every card requires question. Flashcards require answer. Multiple-choice cards require options and exactly one of answer or answers, never both.
-- Use answer for one correct answer; use answers for at least 2 correct answers.
-- Every correct answer must appear exactly once in options. Use 2–6 unique non-empty options and at least one incorrect option.
+- Use answer for one correct answer; use answers for one or more correct answers.
+- Every correct answer must appear exactly once in options. Use 2–50 unique non-empty options and at least one incorrect option.
 - Use plausible distractors, avoid ambiguity and duplicate questions, and do not mark correct options in their text.
 - Optional questionImage and answerImage use {"src":"USER_SUPPLIED_IMAGE_URL","alt":"Meaningful description","caption":"Optional caption"}. Use only supplied HTTPS URLs or same-origin paths. Never invent image URLs; omit images when no suitable URL is supplied. Answer images appear after reveal/submission.
 - Optional category, tags, and difficulty (1, 2, or 3) are supported. Do not generate IDs unless requested.
@@ -665,7 +665,7 @@ Use `answers` when several answers are correct. Do not provide both fields:
 }
 ```
 
-Every correct answer must appear exactly once in `options`. Options must be non-empty and unique (2–6). Multi-answer cards require at least 2 unique correct answers and at least one incorrect option, so they need at least 3 options.
+Every correct answer must appear exactly once in `options`. Options must be non-empty and unique (2–50). Multi-answer cards require at least 1 unique correct answer and at least one incorrect option, so they need at least 2 options.
 
 Single answer: choose one option → immediate result. Multiple answers: select all that apply → **Submit answer** → result. Only an exact match is correct; missing or extra selections are incorrect. Feedback identifies correct selections, incorrect selections, and missed correct answers. Select **Next** to continue. Checkboxes support Tab and Space; Submit supports keyboard activation. Number shortcuts toggle options.
 
@@ -705,7 +705,7 @@ Use this structure:
 Requirements:
 - Every card must have at least 2 correct answers. Use answers; omit answer.
 - Every correct answer must appear exactly once in options.
-- Use 3–6 unique non-empty options, preferably 4–6, with at least one incorrect option.
+- Use as many options as needed (2–50). Small questions may use 3–6; complex questions may use 10, 20, or more. Include at least one incorrect option. Do not add filler options or reveal the correct-answer count.
 - Incorrect options must be plausible distractors. Avoid ambiguous questions and duplicate questions.
 - Do not label correct options or add "(correct)" to their text.
 - Preserve the source language and terminology. Every correct answer must be defensible from the supplied material; do not invent unsupported facts.
@@ -716,4 +716,72 @@ Requirements:
 Requested deck title: [TITLE]
 Requested language/code: [LANGUAGE AND CODE]
 Study material: [PASTE STUDY MATERIAL HERE]
+```
+
+
+## Large multiple-choice questions
+
+Questions are not limited to four options. ZapLearn supports 2–50 options, including 20+ options and many correct answers: for example, 20 options with 8 correct answers, or 30 with 20 correct. Use large questions when pedagogically useful; they are not the default. `MAX_MULTIPLE_CHOICE_OPTIONS` in `src/types/deck.ts` defines the shared maximum. All options and correct answers must be unique and non-empty, every correct answer must occur in the options, and at least one option must be incorrect. `answers` accepts one or more values; `answer` retains immediate single-answer grading. Multiple-answer grading requires exact set equality without partial credit.
+
+The editor supports repeatable, wrapping option rows and **Bulk add options**: one trimmed, non-empty line per option. Bulk entry appends without overwriting; duplicates and totals above the shared maximum are rejected. Training scrolls vertically, shows only the selected count before submission, and offers **Clear selection**. Shuffled order stays stable during the question and does not alter stored order. There is no card-count limit; JSON files have a 2 MiB size limit, and existing image-package safety limits still apply.
+
+## Updating an existing deck with JSON
+
+In **Manage decks → Update deck from JSON**, paste or upload JSON, review the preview, then choose **Apply update**.
+
+- **Import new deck** creates a separate deck.
+- **Merge/update** (default) keeps omitted cards, updates matching cards, and adds new cards.
+- **Replace deck** uses the incoming `cards` collection as the complete replacement. The preview reports removals and requires a deletion confirmation.
+
+Matching ID → update. Without an ID, a unique question match after trimming, collapsing whitespace and ignoring case → update. New question → add using existing stable-ID generation. Ambiguous questions, repeated incoming cards, and an unfamiliar ID attached to an existing question require review; edit the JSON with the intended existing ID and preview again. No fuzzy matching occurs. A matching ID can intentionally change the question. Read-only decks must first be duplicated.
+
+Normal merge `cards` entries may omit fields to preserve them. `options` replaces the full option list; it never unions automatically. `answer` switches to single-answer mode and `answers` switches to multiple-answer mode. Set `type` explicitly to change to a flashcard. New cards need all required content. Omitted images are preserved; `questionImage: null` or `answerImage: null` explicitly removes one. Category can also be cleared with null; tags with an empty array.
+
+### Partial patch format
+
+```json
+{
+  "deckId": "deck-id",
+  "updates": [{
+    "cardId": "card-2",
+    "addOptions": ["JavaScript", "TypeScript"],
+    "addCorrectAnswers": ["JavaScript", "TypeScript"],
+    "difficulty": 3
+  }],
+  "addCards": [{ "question": "What is React?", "answer": "A JavaScript library for building user interfaces." }]
+}
+```
+
+Use direct fields (`question`, `answer`, `answers`, `options`, `category`, `tags`, `difficulty`, `type`, `questionImage`, `answerImage`) to set values. Omitted fields stay unchanged. Patches additionally support `addOptions`, `removeOptions`, `addCorrectAnswers`, `removeCorrectAnswers`, `addTags`, and `removeTags`. Add operations append unique values, ignoring repeated additions; remove operations remove exact values. Replacement happens first, then addition, then removal. Correct answers are never added to options implicitly: include them in options or addOptions. Invalid final answer/option combinations block the whole update. Patches have no deletion operation. `addCards` uses the same safe matching checks as merge. Replace mode requires `cards`, not a patch document.
+
+The preview lists new, updated, unchanged and deleted cards, with readable old/new field values. No-op updates say **No changes found** and do not write. All input and final cards are validated before saving. Deck and image writes share the existing atomic IndexedDB transaction; failures and stale previews leave the deck unchanged. Stable matched IDs retain all progress, even across answer-mode changes. New cards have no progress; unrelated progress records are untouched. Replace does not erase historical progress records.
+
+### Recovery
+
+Prominently offered **Download backup before applying update** saves the prior deck as JSON, or an image ZIP package when local assets exist. There is no automatic undo. To restore, import the backup using the existing replacement workflow. Image packages retain local assets; JSON alone cannot transfer local images. Keep this backup before applying. Learning progress remains separate and unchanged by the update.
+
+### AI prompt: expanding an existing deck
+
+```text
+Update the following ZapLearn deck.
+I will provide an existing ZapLearn JSON deck. Expand and improve it without unnecessarily changing existing questions.
+Return valid JSON only. Do not use Markdown fences or commentary.
+
+Requirements:
+- Preserve existing card IDs exactly when present. Do not create replacement IDs.
+- Preserve existing questions unless I request changes. Add or update questions as requested.
+- Do not remove existing cards unless explicitly requested. Avoid duplicate questions.
+- Use as many answer options as the question genuinely requires, up to 50.
+- Small questions may contain 3–6 options. Complex select-all questions may contain 10, 20, or more options when appropriate.
+- ZapLearn supports large option sets and many correct answers. Use answers for multiple-correct questions.
+- Every correct answer must appear exactly once in options. Include at least one incorrect option.
+- Use plausible, relevant incorrect options. Do not add filler merely to increase the count.
+- Do not reveal the number of correct answers unless educationally required.
+- Preserve the language and terminology of the source material. Do not invent unsupported facts.
+
+Existing deck:
+[PASTE JSON]
+
+Changes requested:
+[DESCRIBE CHANGES]
 ```

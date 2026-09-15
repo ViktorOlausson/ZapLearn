@@ -44,7 +44,6 @@ describe("multiple-answer schema and persistence", () => {
   });
   it.each([
     ["empty", { answers: [] }],
-    ["one answer", { answers: ["Python"] }],
     ["duplicates", { answers: ["Python", "Python"] }],
     ["missing option", { answers: ["Python", "Rust"] }],
     [
